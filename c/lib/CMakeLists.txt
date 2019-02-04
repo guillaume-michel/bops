@@ -1,0 +1,35 @@
+cmake_minimum_required(VERSION 3.9)
+
+project(bops VERSION 1.0.0 DESCRIPTION "binary operations")
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -march=native")
+
+include(GNUInstallDirs)
+
+add_library(${PROJECT_NAME} SHARED
+  dense.cpp)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION 1
+  CXX_STANDARD 17
+  CXX_STANDARD_REQUIRED OFF
+  CXX_EXTENSIONS OFF
+  PUBLIC_HEADER bops.h)
+
+configure_file(${PROJECT_NAME}.pc.in ${PROJECT_NAME}.pc @ONLY)
+
+target_include_directories(${PROJECT_NAME} PUBLIC .)
+
+install(TARGETS ${PROJECT_NAME}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)

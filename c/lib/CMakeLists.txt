@@ -2,14 +2,6 @@ cmake_minimum_required(VERSION 3.9)
 
 project(bops VERSION 1.0.0 DESCRIPTION "binary operations")
 
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-endif()
-
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -march=native")
-
 include(GNUInstallDirs)
 
 add_library(${PROJECT_NAME} SHARED

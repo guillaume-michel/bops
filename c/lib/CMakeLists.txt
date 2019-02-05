@@ -13,7 +13,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -march=native")
 include(GNUInstallDirs)
 
 add_library(${PROJECT_NAME} SHARED
-  dense.cpp)
+  dense.cpp
+  mlp.cpp
+  )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
   VERSION ${PROJECT_VERSION}

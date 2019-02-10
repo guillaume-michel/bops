@@ -12,3 +12,4 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -march=native")
 
 add_subdirectory(lib)
 add_subdirectory(bench)
+add_subdirectory(train)

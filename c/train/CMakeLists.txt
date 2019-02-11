@@ -6,7 +6,7 @@ add_executable(${PROJECT_NAME}
   train.cpp
 )
 
-target_link_libraries (${PROJECT_NAME} LINK_PUBLIC bops)
+target_link_libraries (${PROJECT_NAME} LINK_PUBLIC bops mnist)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
   CXX_STANDARD 17

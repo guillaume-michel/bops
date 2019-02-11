@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <ctime>
+#include <numeric>
 
 #include <bops.h>
 
@@ -97,7 +98,7 @@ uint8_t prediction(const std::vector<uint64_t>& y,
     uint32_t* y32 = (uint32_t*)y.data();
 
     auto begin = &(y32[index*num_classes]);
-    auto end = &(y32[index*num_classes + 9]);
+    auto end = &(y32[index*num_classes + num_classes - 1]);
 
     return (uint8_t)std::distance(begin,
                                   std::max_element(begin, end));
@@ -122,6 +123,27 @@ float accuracy(const std::vector<uint64_t>& y,
     }
 
     return acc / num_samples;
+}
+
+void probabilities(std::vector<float>& probabilities,
+                   const std::vector<uint64_t>& y,
+                   size_t num_samples) {
+    for (size_t i=0; i<num_samples; ++i) {
+        uint32_t* y32 = (uint32_t*)y.data();
+
+        auto begin = &(y32[i*num_classes]);
+        auto end = &(y32[i*num_classes + num_classes - 1]);
+
+        float sum = std::accumulate(begin, end, 0.0f);
+
+        for (size_t k=0; k<num_classes; ++k) {
+            if (sum == 0.0f) {
+                probabilities[i*num_classes + k] = 1.0f / num_classes;
+            } else {
+                probabilities[i*num_classes + k] = float(y[i*num_classes + k]) / sum;
+            }
+        }
+    }
 }
 
 int main() {

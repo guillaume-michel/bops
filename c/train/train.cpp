@@ -108,22 +108,17 @@ float accuracy(const std::vector<uint64_t>& y,
                const std::vector<uint8_t>& Y,
                size_t num_samples) {
 
-    std::vector<uint8_t> preds(num_samples);
-
-    // compute preds
-    for (size_t i=0; i<num_samples; ++i) {
-        preds[i] = prediction(y, i);
-    }
-
     // compute accuracy
     float acc = 0;
 
+    // compute preds
     for (size_t i=0; i<num_samples; ++i) {
-        acc += float(preds[i] == Y[i]);
+        acc += float(prediction(y, i) == Y[i]);
     }
 
     return acc / num_samples;
 }
+
 
 void probabilities(std::vector<float>& probabilities,
                    const std::vector<uint64_t>& y,

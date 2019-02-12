@@ -94,19 +94,17 @@ void showTimings(float duration_ns, size_t B) {
               << std::endl;
 }
 
-uint8_t prediction(const std::vector<uint64_t>& y,
+uint8_t prediction(const std::vector<uint32_t>& y,
                    size_t index) {
 
-    uint32_t* y32 = (uint32_t*)y.data();
-
-    auto begin = &(y32[index*mnist::num_classes]);
-    auto end = &(y32[index*mnist::num_classes + mnist::num_classes - 1]);
+    auto begin = &(y[index*mnist::num_classes]);
+    auto end = &(y[index*mnist::num_classes + mnist::num_classes - 1]);
 
     return (uint8_t)std::distance(begin,
                                   std::max_element(begin, end));
 }
 
-float accuracy(const std::vector<uint64_t>& y,
+float accuracy(const std::vector<uint32_t>& y,
                const std::vector<uint8_t>& Y,
                size_t num_samples) {
 
@@ -143,6 +141,38 @@ void probabilities(std::vector<float>& probabilities,
     }
 }
 
+template<typename InputIt>
+float probability(InputIt begin,
+                  InputIt end,
+                  size_t index) {
+
+    float sum = std::accumulate(begin, end, 0.0f);
+
+    if (sum == 0.0f) {
+        return 1.0f / mnist::num_classes;
+    } else {
+        auto it = begin;
+        std::advance(it, index);
+        return float(*it) / sum;
+    }
+}
+
+float loss(const std::vector<uint32_t>& y,
+           const std::vector<uint8_t>& Y,
+           size_t num_samples) {
+
+    float loss = 0.0f;
+
+    for (size_t i=0; i<num_samples; ++i) {
+        auto begin = &(y[i*mnist::num_classes]);
+        auto end = &(y[i*mnist::num_classes + mnist::num_classes - 1]);
+        auto ground_truth_label = Y[i];
+        loss += (1 - probability(begin, end, ground_truth_label));
+    }
+
+    return loss / num_samples;
+}
+
 auto load_mnist_dataset(const std::string& mnist_dirPath) {
     std::cout << "Reading MNIST dataset...";
 
@@ -176,8 +206,8 @@ int main() {
     auto [Xtrain, Ytrain, Xtest, Ytest] = load_mnist_dataset(mnist_dirPath);
     //--------------------------------------------------------------------------
 
-    std::vector<uint64_t> ytrain(B*dims[num_dims-1]/64, 0);
-    std::vector<uint64_t> ytest(mnist::num_test_samples*dims[num_dims-1]/64, 0);
+    std::vector<uint32_t> ytrain(B*dims[num_dims-1]/64*2, 0);
+    std::vector<uint32_t> ytest(mnist::num_test_samples*dims[num_dims-1]/64*2, 0);
 
     uint64_t* weights = mlp_alloc_weights(dims, num_dims);
     uint64_t* train_scratchs = mlp_alloc_scratchs(dims, num_dims, B);
@@ -191,7 +221,7 @@ int main() {
     }
 
     auto start = std::chrono::high_resolution_clock::now();
-    mlp(ytest.data(),
+    mlp((uint64_t*)ytest.data(),
         Xtest.data(),
         weights,
         test_scratchs,
@@ -209,7 +239,11 @@ int main() {
 
     std::cout << "Test accuracy: " << test_acc << std::endl;
 
-    mlp(ytrain.data(),
+    float test_loss = loss(ytest, Ytest, mnist::num_test_samples);
+
+    std::cout << "Test loss: " << test_loss << std::endl;
+
+    mlp((uint64_t*)ytrain.data(),
         Xtrain.data(),
         weights,
         train_scratchs,
@@ -220,6 +254,10 @@ int main() {
     float train_acc = accuracy(ytrain, Ytrain, B);
 
     std::cout << "Train accuracy: " << train_acc << std::endl;
+
+    float train_loss = loss(ytrain, Ytrain, B);
+
+    std::cout << "Train loss: " << train_loss << std::endl;
 
     //--------------------------------------------------------
     free(weights);

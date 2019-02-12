@@ -29,6 +29,12 @@ uint64_t rand64() {
     return x;
 }
 
+void randomize(std::vector<uint64_t>& w) {
+    for (size_t i=0; i<w.size(); ++i) {
+        w[i] = rand64();
+    }
+}
+
 void showMemory(size_t* dims,
                 size_t num_dims,
                 size_t B) {
@@ -88,14 +94,21 @@ void showTimings(float duration_ns, size_t B) {
 
     std::cout << "Execution time: "
               << duration
-              << unit << std::endl;
-    std::cout << B/duration_s
+              << unit
+              << " - "
+              << B/duration_s
               << " examples/s"
-              << std::endl;
-    std::cout << duration_per_sample
+              << " - "
+              << duration_per_sample
               << unit_per_sample
               << "/sample"
               << std::endl;
+}
+
+size_t argmin(const std::vector<float>& values) {
+    auto it = std::min_element(std::begin(values), std::end(values));
+
+    return std::distance(std::begin(values), it);
 }
 
 uint8_t prediction(const std::vector<uint32_t>& y,
@@ -109,7 +122,7 @@ uint8_t prediction(const std::vector<uint32_t>& y,
 }
 
 float accuracy(const std::vector<uint32_t>& y,
-               const std::vector<uint8_t>& Y,
+               uint8_t* Y,
                size_t num_samples) {
 
     // compute accuracy
@@ -162,7 +175,7 @@ float probability(InputIt begin,
 }
 
 float loss(const std::vector<uint32_t>& y,
-           const std::vector<uint8_t>& Y,
+           uint8_t* Y,
            size_t num_samples) {
 
     float loss = 0.0f;
@@ -226,11 +239,212 @@ void uniformCrossover(std::vector<uint64_t>& w1,
     }
 }
 
+std::vector<std::vector<uint64_t>> createPopulation(size_t* dims,
+                                                    size_t num_dims,
+                                                    size_t population_size) {
+    std::vector<std::vector<uint64_t>> population(population_size);
+
+    size_t weights_size = mlp_weights_size(dims, num_dims)/sizeof(uint64_t);
+
+    for (size_t i=0; i<population_size; ++i) {
+        population[i].resize(weights_size);
+        randomize(population[i]);
+    }
+
+    return population;
+}
+
+std::tuple<std::vector<float>,
+           std::vector<float>>
+evaluateFitness(std::vector<std::vector<uint64_t>>& population,
+                size_t* dims,
+                size_t num_dims,
+                size_t num_samples,
+                uint64_t* Xtrain_batch,
+                uint8_t* Ytrain_batch) {
+
+    std::vector<float> fitnesses(population.size());
+    std::vector<float> accuracies(population.size());
+
+    for(size_t i=0; i<population.size(); ++i) {
+        std::vector<uint32_t> ytrain(num_samples*dims[num_dims-1]/64*2, 0);
+        std::vector<uint64_t> train_scratchs(mlp_scratchs_size(dims, num_dims, num_samples));
+
+        auto start = std::chrono::high_resolution_clock::now();
+        mlp((uint64_t*)ytrain.data(),
+            Xtrain_batch,
+            population[i].data(),
+            train_scratchs.data(),
+            num_samples,
+            dims,
+            num_dims);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        float duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+        (void)duration_ns;
+        //showTimings(duration_ns, num_samples);
+
+        float train_acc = accuracy(ytrain, Ytrain_batch, num_samples);
+
+        //std::cout << "Train accuracy: " << train_acc << std::endl;
+
+        float train_loss = loss(ytrain, Ytrain_batch, num_samples);
+
+        //std::cout << "Train loss: " << train_loss << std::endl;
+
+        fitnesses[i] = train_loss;
+        accuracies[i] = train_acc;
+    }
+
+    return std::make_tuple(fitnesses, accuracies);
+}
+
+std::tuple<std::vector<uint64_t>, // best individual weights
+           float,                 // best individual train loss
+           float,                 // best individual train accuracy
+           float,                 // best individual test loss
+           float>                 // best individual test accuracy
+run(std::vector<std::vector<uint64_t>>& population,
+    float pcross,
+    float pmut,
+    size_t* dims,
+    size_t num_dims,
+    size_t train_batch_size,
+    size_t eval_batch_size,
+    size_t NG,
+    std::vector<uint64_t>& Xtrain,
+    std::vector<uint8_t>& Ytrain,
+    std::vector<uint64_t>& Xtest,
+    std::vector<uint8_t>& Ytest) {
+
+    (void)pcross;
+    (void)pmut;
+    const size_t population_size = population.size();
+
+    size_t Xbatch_offset = train_batch_size * mnist::width * mnist::height * mnist::channels * mnist::bits_per_channels / 64;
+
+    uint64_t* Xtrain_batch = Xtrain.data();
+    uint8_t* Ytrain_batch = Ytrain.data();
+
+    auto [fitnesses, train_accuracies] = evaluateFitness(population,
+                                                         dims,
+                                                         num_dims,
+                                                         train_batch_size,
+                                                         Xtrain_batch,
+                                                         Ytrain_batch);
+    auto bestIndex = argmin(fitnesses);
+    auto bestIndividual = population[bestIndex];
+
+    float best_train_loss = fitnesses[bestIndex];
+    float best_train_accuracy = train_accuracies[bestIndex];
+    float best_test_loss = 1;
+    float best_test_accuracy = 0;
+
+    std::vector<uint32_t> ytest(eval_batch_size*dims[num_dims-1]/64*2, 0);
+    std::vector<uint64_t> test_scratchs(mlp_scratchs_size(dims, num_dims, eval_batch_size));
+
+    // evaluate TEST metrics for best individual
+    mlp((uint64_t*)ytest.data(),
+        Xtest.data(),
+        bestIndividual.data(),
+        test_scratchs.data(),
+        eval_batch_size,
+        dims,
+        num_dims);
+
+    best_test_accuracy = accuracy(ytest, Ytest.data(), eval_batch_size);
+    best_test_loss = loss(ytest, Ytest.data(), eval_batch_size);
+
+    std::cout << "best individual: TRAIN accuracy: " << best_train_accuracy
+              << " - TRAIN loss: " << best_train_loss
+              << " - TEST accuracy: " << best_test_accuracy
+              << " - TEST loss: " << best_test_loss << std::endl;
+
+    for (size_t g=0; g<NG; ++g) {
+        std::cout << "-----------------------------------------------------------" << std::endl;
+        std::cout << "Generation: " << g << std::endl;
+
+        Xtrain_batch += Xbatch_offset;
+        Ytrain_batch += train_batch_size;
+
+        // candidate individuals
+        auto candidates = createPopulation(dims, num_dims, population_size);
+
+        auto [candidates_fitnesses, candidates_train_accuracies] = evaluateFitness(candidates,
+                                                                                   dims,
+                                                                                   num_dims,
+                                                                                   train_batch_size,
+                                                                                   Xtrain_batch,
+                                                                                   Ytrain_batch);
+
+        auto all = fitnesses;
+        all.insert(std::end(all), std::begin(candidates_fitnesses), std::end(candidates_fitnesses));
+
+        std::vector<size_t> index(all.size(), 0);
+        for (size_t i=0; i<index.size(); ++i) {
+            index[i] = i;
+        }
+
+        std::sort(std::begin(index),
+                  std::end(index),
+                  [&](size_t a, size_t b) {
+                      return (all[a] < all[b]);
+                  });
+
+        // update population and fitness with the best elements
+        auto new_population = population;
+        auto new_fitnesses = fitnesses;
+        auto new_train_accuracies = train_accuracies;
+        for (size_t i=0; i<population_size; ++i) {
+            if (index[i] < population_size) {
+                // parent is better
+                new_population[i] = population[index[i]];
+                new_fitnesses[i] = fitnesses[index[i]];
+                new_train_accuracies[i] = train_accuracies[index[i]];
+            } else {
+                // candidate is better
+                new_population[i] = candidates[index[i]-population_size];
+                new_fitnesses[i] = candidates_fitnesses[index[i]-population_size];
+                new_train_accuracies[i] = candidates_train_accuracies[index[i]];
+            }
+        }
+
+        population = new_population;
+        fitnesses = new_fitnesses;
+        train_accuracies = new_train_accuracies;
+        bestIndex = 0;
+        bestIndividual = population[0];
+
+        best_train_loss = fitnesses[bestIndex];
+        best_train_accuracy = train_accuracies[bestIndex];
+
+        // evaluate TEST metrics for best individual
+        mlp((uint64_t*)ytest.data(),
+            Xtest.data(),
+            bestIndividual.data(),
+            test_scratchs.data(),
+            eval_batch_size,
+            dims,
+            num_dims);
+
+        best_test_accuracy = accuracy(ytest, Ytest.data(), eval_batch_size);
+        best_test_loss = loss(ytest, Ytest.data(), eval_batch_size);
+
+        std::cout << "best individual: TRAIN accuracy: " << best_train_accuracy
+                  << " - TRAIN loss: " << best_train_loss
+                  << " - TEST accuracy: " << best_test_accuracy
+                  << " - TEST loss: " << best_test_loss << std::endl;
+    }
+
+    return make_tuple(bestIndividual, best_train_loss, best_train_accuracy, best_test_loss, best_test_accuracy);
+}
+
 int main() {
 
     srand(time(NULL)); // randomize seed
 
-    constexpr size_t B = 6000;
+    constexpr size_t B = 600;
     static_assert(mnist::num_train_samples % B == 0, "batch size should be a multiple of num_train_samples");
 
     constexpr size_t num_dims = 3;
@@ -241,70 +455,100 @@ int main() {
         mnist::num_classes*32, // M2
     };
 
+    constexpr size_t NG = 1000;
+    constexpr size_t population_size = 50;
+    constexpr float pcross = 1e-4;
+    constexpr float pmut = 1e-5;
+
+    showMemory(dims, num_dims, B);
+
     //--------------------------------------------------------------------------
     // MNIST dataset
     auto [Xtrain, Ytrain, Xtest, Ytest] = load_mnist_dataset(mnist_dirPath);
     //--------------------------------------------------------------------------
 
-    std::vector<uint32_t> ytrain(B*dims[num_dims-1]/64*2, 0);
-    std::vector<uint32_t> ytest(mnist::num_test_samples*dims[num_dims-1]/64*2, 0);
+    // population for the current generation
+    auto population = createPopulation(dims, num_dims, population_size);
 
-    std::vector<uint64_t> weights(mlp_weights_size(dims, num_dims)/sizeof(uint64_t));
-    uint64_t* train_scratchs = mlp_alloc_scratchs(dims, num_dims, B);
-    uint64_t* test_scratchs = mlp_alloc_scratchs(dims, num_dims, mnist::num_test_samples);
+    auto [bestIndividual,
+          best_train_loss,
+          best_train_accuracy,
+          best_test_loss,
+          best_test_accuracy] = run(population,
+                                    pcross,
+                                    pmut,
+                                    dims,
+                                    num_dims,
+                                    B,
+                                    mnist::num_test_samples,
+                                    NG,
+                                    Xtrain,
+                                    Ytrain,
+                                    Xtest,
+                                    Ytest);
 
-    showMemory(dims, num_dims, B);
+    std::cout << "===========================================================" << std::endl;
 
-    // random initialization of weights
-    for (size_t i=0; i<weights.size(); ++i) {
-        weights[i] = rand64();
+    std::cout << "weights:" << std::endl;
+    for (size_t i=0; i<bestIndividual.size(); ++i) {
+        std::cout << std::hex << bestIndividual[i] << std::endl;
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
-    mlp((uint64_t*)ytest.data(),
-        Xtest.data(),
-        weights.data(),
-        test_scratchs,
-        mnist::num_test_samples,
-        dims,
-        num_dims);
-    auto end = std::chrono::high_resolution_clock::now();
+    std::cout << "best individual: TRAIN accuracy: " << best_train_accuracy
+              << " - TRAIN loss: " << best_train_loss
+              << " - TEST accuracy: " << best_test_accuracy
+              << " - TEST loss: " << best_test_loss << std::endl;
 
-    float duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 
-    showTimings(duration_ns, mnist::num_test_samples);
 
-    //--------------------------------------------------------
-    float test_acc = accuracy(ytest, Ytest, mnist::num_test_samples);
+    // std::vector<uint32_t> ytrain(B*dims[num_dims-1]/64*2, 0);
+    // std::vector<uint32_t> ytest(mnist::num_test_samples*dims[num_dims-1]/64*2, 0);
 
-    std::cout << "Test accuracy: " << test_acc << std::endl;
+    // std::vector<uint64_t> weights(mlp_weights_size(dims, num_dims)/sizeof(uint64_t));
+    // std::vector<uint64_t> train_scratchs(mlp_scratchs_size(dims, num_dims, B));
+    // std::vector<uint64_t> test_scratchs(mlp_scratchs_size(dims, num_dims, mnist::num_test_samples));
 
-    float test_loss = loss(ytest, Ytest, mnist::num_test_samples);
+    // // random initialization of weights
+    // randomize(weights);
 
-    std::cout << "Test loss: " << test_loss << std::endl;
+    // auto start = std::chrono::high_resolution_clock::now();
+    // mlp((uint64_t*)ytest.data(),
+    //     Xtest.data(),
+    //     weights.data(),
+    //     test_scratchs.data(),
+    //     mnist::num_test_samples,
+    //     dims,
+    //     num_dims);
+    // auto end = std::chrono::high_resolution_clock::now();
 
-    mlp((uint64_t*)ytrain.data(),
-        Xtrain.data(),
-        weights.data(),
-        train_scratchs,
-        B,
-        dims,
-        num_dims);
+    // float duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 
-    float train_acc = accuracy(ytrain, Ytrain, B);
+    // showTimings(duration_ns, mnist::num_test_samples);
 
-    std::cout << "Train accuracy: " << train_acc << std::endl;
+    // //--------------------------------------------------------
+    // float test_acc = accuracy(ytest, Ytest, mnist::num_test_samples);
 
-    float train_loss = loss(ytrain, Ytrain, B);
+    // std::cout << "Test accuracy: " << test_acc << std::endl;
 
-    std::cout << "Train loss: " << train_loss << std::endl;
+    // float test_loss = loss(ytest, Ytest, mnist::num_test_samples);
 
-    //--------------------------------------------------------
-    free(train_scratchs);
-    train_scratchs = nullptr;
+    // std::cout << "Test loss: " << test_loss << std::endl;
 
-    free(test_scratchs);
-    test_scratchs = nullptr;
+    // mlp((uint64_t*)ytrain.data(),
+    //     Xtrain.data(),
+    //     weights.data(),
+    //     train_scratchs.data(),
+    //     B,
+    //     dims,
+    //     num_dims);
+
+    // float train_acc = accuracy(ytrain, Ytrain, B);
+
+    // std::cout << "Train accuracy: " << train_acc << std::endl;
+
+    // float train_loss = loss(ytrain, Ytrain, B);
+
+    // std::cout << "Train loss: " << train_loss << std::endl;
 
     return 0;
 }

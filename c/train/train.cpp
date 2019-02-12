@@ -15,6 +15,10 @@
 
 const std::string mnist_dirPath = std::string(getenv("HOME")) + "/data/mnist";
 
+float randf() {
+    return rand() / (float)RAND_MAX;
+}
+
 uint64_t rand64() {
     uint64_t x = rand() | ((uint64_t)rand())<<32;
 
@@ -186,6 +190,42 @@ auto load_mnist_dataset(const std::string& mnist_dirPath) {
     return *mnist_datas;
 }
 
+uint64_t uniformMask(float prob) {
+    uint64_t mask = 0;
+
+    for (size_t j=0; j<64; ++j) {
+        if (randf() <= prob) {
+            mask |= (uint64_t(1)<<j);
+        }
+    }
+
+    return mask;
+}
+
+void uniformMutation(std::vector<uint64_t>& w,
+                     float pmut) {
+
+    for (size_t i=0; i<w.size(); ++i) {
+        uint64_t mask = uniformMask(pmut);
+
+        w[i] ^= mask;
+    }
+}
+
+void uniformCrossover(std::vector<uint64_t>& w1,
+                      std::vector<uint64_t>& w2,
+                      float pcross) {
+
+    for (size_t i=0; i<w1.size(); ++i) {
+        uint64_t mask = uniformMask(pcross);
+
+        uint64_t bitdiff = (w1[i]^w2[i]) & mask;
+
+        w1[i] ^= bitdiff;
+        w2[i] ^= bitdiff;
+    }
+}
+
 int main() {
 
     srand(time(NULL)); // randomize seed
@@ -209,21 +249,21 @@ int main() {
     std::vector<uint32_t> ytrain(B*dims[num_dims-1]/64*2, 0);
     std::vector<uint32_t> ytest(mnist::num_test_samples*dims[num_dims-1]/64*2, 0);
 
-    uint64_t* weights = mlp_alloc_weights(dims, num_dims);
+    std::vector<uint64_t> weights(mlp_weights_size(dims, num_dims)/sizeof(uint64_t));
     uint64_t* train_scratchs = mlp_alloc_scratchs(dims, num_dims, B);
     uint64_t* test_scratchs = mlp_alloc_scratchs(dims, num_dims, mnist::num_test_samples);
 
     showMemory(dims, num_dims, B);
 
     // random initialization of weights
-    for (size_t i=0; i<mlp_weights_size(dims, num_dims)/sizeof(uint64_t); ++i) {
+    for (size_t i=0; i<weights.size(); ++i) {
         weights[i] = rand64();
     }
 
     auto start = std::chrono::high_resolution_clock::now();
     mlp((uint64_t*)ytest.data(),
         Xtest.data(),
-        weights,
+        weights.data(),
         test_scratchs,
         mnist::num_test_samples,
         dims,
@@ -245,7 +285,7 @@ int main() {
 
     mlp((uint64_t*)ytrain.data(),
         Xtrain.data(),
-        weights,
+        weights.data(),
         train_scratchs,
         B,
         dims,
@@ -260,9 +300,6 @@ int main() {
     std::cout << "Train loss: " << train_loss << std::endl;
 
     //--------------------------------------------------------
-    free(weights);
-    weights = nullptr;
-
     free(train_scratchs);
     train_scratchs = nullptr;
 

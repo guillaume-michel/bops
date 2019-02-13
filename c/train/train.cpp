@@ -356,14 +356,14 @@ run(std::vector<std::vector<uint64_t>>& population,
     best_test_accuracy = accuracy(ytest, Ytest.data(), eval_batch_size);
     best_test_loss = loss(ytest, Ytest.data(), eval_batch_size);
 
-    std::cout << "best individual: TRAIN accuracy: " << best_train_accuracy
+    std::cout << "Gen: 0 - best individual: TRAIN accuracy: " << best_train_accuracy
               << " - TRAIN loss: " << best_train_loss
               << " - TEST accuracy: " << best_test_accuracy
               << " - TEST loss: " << best_test_loss << std::endl;
 
-    for (size_t g=0; g<NG; ++g) {
-        std::cout << "-----------------------------------------------------------" << std::endl;
-        std::cout << "Generation: " << g << std::endl;
+    for (size_t g=1; g<=NG; ++g) {
+        // std::cout << "-----------------------------------------------------------" << std::endl;
+        // std::cout << "Generation: " << g << std::endl;
 
         Xtrain_batch += Xbatch_offset;
         Ytrain_batch += train_batch_size;
@@ -419,22 +419,29 @@ run(std::vector<std::vector<uint64_t>>& population,
         best_train_loss = fitnesses[bestIndex];
         best_train_accuracy = train_accuracies[bestIndex];
 
-        // evaluate TEST metrics for best individual
-        mlp((uint64_t*)ytest.data(),
-            Xtest.data(),
-            bestIndividual.data(),
-            test_scratchs.data(),
-            eval_batch_size,
-            dims,
-            num_dims);
+        if (g%10 == 0) {
+            // evaluate TEST metrics for best individual
+            mlp((uint64_t*)ytest.data(),
+                Xtest.data(),
+                bestIndividual.data(),
+                test_scratchs.data(),
+                eval_batch_size,
+                dims,
+                num_dims);
 
-        best_test_accuracy = accuracy(ytest, Ytest.data(), eval_batch_size);
-        best_test_loss = loss(ytest, Ytest.data(), eval_batch_size);
+            best_test_accuracy = accuracy(ytest, Ytest.data(), eval_batch_size);
+            best_test_loss = loss(ytest, Ytest.data(), eval_batch_size);
 
-        std::cout << "best individual: TRAIN accuracy: " << best_train_accuracy
-                  << " - TRAIN loss: " << best_train_loss
-                  << " - TEST accuracy: " << best_test_accuracy
-                  << " - TEST loss: " << best_test_loss << std::endl;
+            std::cout << "Gen: " << g
+                      << " - best individual: TRAIN accuracy: " << best_train_accuracy
+                      << " - TRAIN loss: " << best_train_loss
+                      << " - TEST accuracy: " << best_test_accuracy
+                      << " - TEST loss: " << best_test_loss << std::endl;
+        } else {
+            std::cout << "Gen: " << g
+                      << " - best individual: TRAIN accuracy: " << best_train_accuracy
+                      << " - TRAIN loss: " << best_train_loss << std::endl;
+        }
     }
 
     return make_tuple(bestIndividual, best_train_loss, best_train_accuracy, best_test_loss, best_test_accuracy);
@@ -455,8 +462,9 @@ int main() {
         mnist::num_classes*32, // M2
     };
 
-    constexpr size_t NG = 1000;
-    constexpr size_t population_size = 50;
+    constexpr size_t iter_per_epoch = mnist::num_train_samples / B;
+    constexpr size_t NG = 1000 * iter_per_epoch;
+    constexpr size_t population_size = 100;
     constexpr float pcross = 1e-4;
     constexpr float pmut = 1e-5;
 

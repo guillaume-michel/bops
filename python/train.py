@@ -1,9 +1,18 @@
 import time
 
+import numpy as np
+
 import tensorflow as tf
 
-EPOCHS = 20
+EPOCHS = 5
 HIDDEN_NEURONS = 128
+
+# if you want really reproducible results:
+# export PYTHONHASHSEED=0 in the calling shell
+SEED = 42
+
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 
 mnist = tf.keras.datasets.mnist
 

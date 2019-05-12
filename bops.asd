@@ -15,4 +15,5 @@
                                      (:file "vops")
                                      (:file "bops")
                                      (:file "dense")
-                                     (:file "dense2")))))
+                                     (:file "dense2")
+                                     (:file "dense3")))))

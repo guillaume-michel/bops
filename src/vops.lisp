@@ -72,3 +72,43 @@
            (optimize (speed 3) (debug 0) (safety 0)))
   (%bit-and i x y r))
 
+;;-----------------------------------------------------------
+
+(defknown %vec-xor ((unsigned-byte 32)
+                    system-area-pointer
+                    system-area-pointer
+                    system-area-pointer)
+    (values)
+    (any)
+  :overwrite-fndb-silently t)
+
+(define-vop (%vec-xor)
+  (:translate %vec-xor)
+  (:policy :fast-safe)
+  (:args (index :scs (unsigned-reg))
+         (result :scs (sap-reg))
+         (vector1 :scs (sap-reg))
+         (vector2 :scs (sap-reg)))
+  (:arg-types unsigned-num
+              system-area-pointer
+              system-area-pointer
+              system-area-pointer)
+  (:results)
+  (:temporary (:sc unsigned-reg) tmp)
+  (:generator
+   4
+   (inst mov
+         tmp
+         (make-ea :qword :base vector1 :disp 0 :index index))
+   (inst xor
+         tmp
+         (make-ea :qword :base vector2 :disp 0 :index index))
+   (inst mov
+         (make-ea :qword :base result :disp 0 :index index)
+         tmp)))
+
+(defun %vec-xor (i r x y)
+  (declare (type (unsigned-byte 32) i)
+           (type system-area-pointer r x y)
+           (optimize (speed 3) (debug 0) (safety 0)))
+  (%vec-xor i r x y))

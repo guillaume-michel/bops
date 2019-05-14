@@ -112,3 +112,178 @@
            (type system-area-pointer r x y)
            (optimize (speed 3) (debug 0) (safety 0)))
   (%vec-xor i r x y))
+
+;;-----------------------------------------------------------
+
+(defknown %sap-ref-u64 (system-area-pointer
+                        (unsigned-byte 64))
+    (unsigned-byte 64)
+    (sb-c:foldable sb-c:flushable sb-c:movable)
+  :overwrite-fndb-silently t)
+
+(define-vop (%sap-ref-u64)
+  (:translate %sap-ref-u64)
+  (:policy :fast-safe)
+  (:args (data :scs (sap-reg))
+         (index :scs (unsigned-reg)))
+  (:arg-types system-area-pointer
+              unsigned-num)
+  (:results (r :scs (unsigned-reg)))
+  (:result-types unsigned-num)
+  (:generator
+   1
+   (inst mov
+         r
+         (make-ea :qword :base data :disp 0 :index index))))
+
+(defun %sap-ref-u64 (data index)
+  (%sap-ref-u64 data index))
+
+;;-----------------------------------------------------------
+
+(defknown %xor-u64 ((unsigned-byte 64)
+                    (unsigned-byte 64))
+    (unsigned-byte 64)
+    (sb-c:foldable sb-c:flushable sb-c:movable)
+  :overwrite-fndb-silently t)
+
+(define-vop (%xor-u64)
+  (:translate %xor-u64)
+  (:policy :fast-safe)
+  (:args (x :scs (unsigned-reg) :target r)
+         (y :scs (unsigned-reg)))
+  (:arg-types unsigned-num
+              unsigned-num)
+  (:results (r :scs (unsigned-reg)))
+  (:result-types unsigned-num)
+  (:generator
+   1
+   (move r x)
+   (inst xor r y)))
+
+(defun %xor-u64 (x y)
+  (%xor-u64 x y))
+
+;;-----------------------------------------------------------
+
+(defknown %popcnt ((unsigned-byte 64))
+    (integer 0 64)
+    (sb-c:foldable sb-c:flushable sb-c:movable)
+  :overwrite-fndb-silently t)
+
+(define-vop (%popcnt)
+  (:policy :fast-safe)
+  (:translate %popcnt)
+  (:args (x :scs (unsigned-reg) :target r))
+  (:arg-types unsigned-num)
+  (:results (r :scs (unsigned-reg)))
+  (:result-types unsigned-num)
+  (:generator 3
+    (unless (location= r x) ; only break the spurious dep. chain
+      (inst xor r r))       ; if r isn't the same register as x.
+    (inst popcnt r x)))
+
+(defun %popcnt (x)
+  (%popcnt x))
+
+;;-----------------------------------------------------------
+
+(defknown %add-u64 ((unsigned-byte 64)
+                    (unsigned-byte 64))
+    (unsigned-byte 64)
+    (sb-c:foldable sb-c:flushable sb-c:movable)
+  :overwrite-fndb-silently t)
+
+(define-vop (%add-u64)
+  (:translate %add-u64)
+  (:policy :fast-safe)
+  (:args (x :scs (unsigned-reg) :target r)
+         (y :scs (unsigned-reg)))
+  (:arg-types unsigned-num
+              unsigned-num)
+  (:results (r :scs (unsigned-reg)))
+  (:result-types unsigned-num)
+  (:generator
+   1
+   (move r x)
+   (inst add r y)))
+
+(defun %add-u64 (x y)
+  (%add-u64 x y))
+
+;;-----------------------------------------------------------
+
+#|
+
+(defparameter *a1* #*11110000111100001111000011110000111100001111000011110000111100001111000011110000111100001111000011110000111100001111000011110000)
+
+(defparameter *a2* #*01010101010111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111)
+
+(defun f (px py i)
+  (declare (type (unsigned-byte 64) i)
+           (type system-area-pointer px py)
+           (optimize (speed 3) (debug 0) (safety 0)))
+
+  (let ((xi (%sap-ref-u64 px i))
+        (yi (%sap-ref-u64 py i)))
+    (%popcnt (%xor-u64 xi yi))))
+
+(defun f2 (px py i)
+  (declare (type (unsigned-byte 64) i)
+           (type system-area-pointer px py)
+           (optimize (speed 3) (debug 0) (safety 0)))
+
+  (let* ((next-i (%add-u64 i 8))
+         (xi (%sap-ref-u64 px i))
+         (yi (%sap-ref-u64 py i))
+         (xip1 (%sap-ref-u64 px next-i))
+         (yip1 (%sap-ref-u64 py next-i))
+         (xi-xor-yi (%xor-u64 xi yi))
+         (xip1-xor-yip1 (%xor-u64 xip1 yip1)))
+    (%add-u64 (%popcnt xi-xor-yi)
+       (%popcnt xip1-xor-yip1))))
+
+(defun f3 (px py i)
+  (declare (type (unsigned-byte 32) i)
+           (type system-area-pointer px py)
+           (optimize (speed 3) (debug 0) (safety 0)))
+
+  (let* ((next-i (+ i 8))
+         (xi (%sap-ref-u64 px i))
+         (yi (%sap-ref-u64 py i))
+         (xip1 (%sap-ref-u64 px next-i))
+         (yip1 (%sap-ref-u64 py next-i))
+         (xi-xor-yi (%xor-u64 xi yi))
+         (xip1-xor-yip1 (%xor-u64 xip1 yip1)))
+    (%add-u64 (%popcnt xi-xor-yi)
+       (%popcnt xip1-xor-yip1))))
+
+(defun f4 (px py N)
+  (declare (type fixnum N)
+           (type system-area-pointer px py)
+           (optimize (speed 3) (debug 0) (safety 0)))
+
+  (loop :for i of-type fixnum :below (/ N 8) :by 8 :sum
+         (%popcnt (%xor-u64 (%sap-ref-u64 px i)
+                            (%sap-ref-u64 py i))) fixnum))
+
+(let ((p1 (sb-sys:vector-sap *a1*))
+      (p2 (sb-sys:vector-sap *a2*)))
+  (f4 p1 p2 (array-dimension *a1* 0)))
+
+(defun random-bit-vector (n)
+  (make-array n
+              :element-type 'bit
+              :initial-contents (loop :repeat n
+                                   :collect (random 2))))
+
+(defun bench-xor-popcnt (&key (n (* 8 1024 1024 1)) (m 1000))
+  (let ((a1 (random-bit-vector n))
+        (a2 (random-bit-vector n)))
+    (sb-sys:with-pinned-objects (a1 a2)
+      (let ((pa1 (sb-sys:vector-sap a1))
+            (pa2 (sb-sys:vector-sap a2)))
+        (time (dotimes (i m)
+                (f4 pa1 pa2 (array-dimension a1 0))))))))
+
+|#

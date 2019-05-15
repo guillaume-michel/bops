@@ -271,15 +271,9 @@
       (p2 (sb-sys:vector-sap *a2*)))
   (f4 p1 p2 (array-dimension *a1* 0)))
 
-(defun random-bit-vector (n)
-  (make-array n
-              :element-type 'bit
-              :initial-contents (loop :repeat n
-                                   :collect (random 2))))
-
 (defun bench-xor-popcnt (&key (n (* 8 1024 1024 1)) (m 1000))
-  (let ((a1 (random-bit-vector n))
-        (a2 (random-bit-vector n)))
+  (let ((a1 (make-random-bit-vector n))
+        (a2 (make-random-bit-vector n)))
     (sb-sys:with-pinned-objects (a1 a2)
       (let ((pa1 (sb-sys:vector-sap a1))
             (pa2 (sb-sys:vector-sap a2)))

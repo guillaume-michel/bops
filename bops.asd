@@ -13,6 +13,7 @@
                         :serial t
                         :components ((:file "package")
                                      (:file "vops")
+                                     (:file "array-utils")
                                      (:file "bops")
                                      (:file "dense")
                                      (:file "dense2")

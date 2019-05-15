@@ -1,11 +1,5 @@
 (in-package #:bops)
 
-(declaim (inline flatten))
-(defun flatten (arr)
-  (make-array (array-total-size arr)
-              :element-type (array-element-type arr)
-              :displaced-to arr))
-
 (declaim (inline array-row))
 (defun array-row (arr index)
   "return the index row of the given array or the given array if its rank is 1"

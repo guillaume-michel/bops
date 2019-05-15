@@ -16,7 +16,9 @@
                 :addps)
   (:import-from :sb-c
                 :move)
-  (:export #:bit-and-vec
+  (:export #:flatten
+           #:make-random-bit-vector
+           #:bit-and-vec
            #:test
            #:test2))
 

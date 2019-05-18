@@ -5,7 +5,7 @@
   :mailto "contact@orilla.fr"
   :homepage "http://orilla.fr"
   :license "MIT license (see COPYING)"
-  :depends-on ()
+  :depends-on ("iterate")
   :in-order-to ((test-op (test-op "bops-tests")))
   :components ((:static-file "COPYING")
                (:static-file "README.md")

@@ -1,95 +1,232 @@
-(in-package #:bops)
+(in-package :bops)
 
-(declaim (inline array-row))
-(defun array-row (arr index)
-  "return the index row of the given array or the given array if its rank is 1"
-  ;;(declare (type (array bit (*)) arr))
-  ;;(declare (type fixnum index))
-  (if (eq (array-rank arr) 1)
-      arr
-      (make-array (cdr (array-dimensions arr))
-                  :element-type (array-element-type arr)
-                  :displaced-to arr
-                  :displaced-index-offset (* index
-                                             (reduce #'*
-                                                       (cdr (array-dimensions arr)))))))
+(defun vec-xor (N pr px py)
+  (declare (type (unsigned-byte 64) N)
+           (type system-area-pointer pr px py)
+           (optimize (speed 3) (debug 0) (safety 0)))
+  (loop :for i of-type fixnum :below (/ N 64) :by 1 :do
+       (%vec-xor (* 8 i) pr px py)))
 
-(declaim (inline check-dimensions))
-(defun check-dimensions (r x w)
-  "r is a bit array of shape (B, M)
-x is a bit array of shape (B, N)
-w is a bit array of shape (M, N)"
-  ;; check B
-  (assert (eq (array-dimension r 0)
-              (array-dimension x 0)))
-  ;; check M
-  (assert (eq (array-dimension r 1)
-              (array-dimension w 0)))
-  ;; check N
-  (assert (eq (array-dimension x 1)
-              (array-dimension w 1))))
-
-(declaim (inline sign))
-(defun sign (x)
-  (declare (type fixnum x))
-  (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (if (>= x 0)
-      1
-      0))
-
-(declaim (inline dense1-elem))
-(defun dense1-elem (xi wj)
-  "compute dense binary operations
-xi is a bit array of shape (N)
-wj is a bit array of shape (N)"
-  (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (let ((N (array-dimension wj 0)))
-    (sign (- N (* 2 (reduce #'+ (bit-xor xi wj)))))))
-
-(declaim (inline dense1))
-(defun dense1 (ri xi w)
-  "Compute dense binary operations between x and w and store result in r
-ri is a bit array of shape (M)
-xi is a bit array of shape (N)
-w is a bit array of shape (M, N)"
-  (let ((M (array-dimension w 0)))
-    (loop :for j :below M :do
-         (setf (aref ri j)
-               (dense1-elem xi (array-row w j))))))
-
-(declaim (inline dense))
-(defun dense (r x w)
-  "Compute dense binary operations between x and w and store result in r
-r is a bit array of shape (B, M)
-x is a bit array of shape (B, N)
-w is a bit array of shape (M, N)"
-  ;;(declare (optimize (speed 3) (debug 0) (safety 0)))
-  (check-dimensions r x w)
-  (let ((B (array-dimension x 0)))
-    (loop :for i :below B :do
-         (let ((xi (array-row x i))
-               (ri (array-row r i)))
-           (dense1 ri xi w)))))
-
-(defun test (&key (B 10) (N 256) (M 128))
-  (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (let* ((x (make-array `(,B ,N) :element-type 'bit :initial-element 1))
-         (w (make-array `(,M ,N) :element-type 'bit :initial-element 1))
-         (r (make-array `(,B ,M) :element-type 'bit :initial-element 0)))
-    (time (dense r x w))
+(defun test-xor (&key (N 256))
+  (let* ((repeat-count 1000)
+         (x1 (make-array N :element-type 'bit :initial-element 1))
+         (x2 (make-array N :element-type 'bit :initial-element 0))
+         (r (make-array N :element-type 'bit :initial-element 0)))
+    (sb-sys:with-pinned-objects (r x1 x2)
+      (let ((pr (sb-sys:vector-sap r))
+            (px1 (sb-sys:vector-sap x1))
+            (px2 (sb-sys:vector-sap x2)))
+        (time (dotimes (count repeat-count) (vec-xor N pr px1 px2)))))
     (equalp r
-            (make-array `(,B ,M) :element-type 'bit :initial-element 1))))
+            (make-array N :element-type 'bit :initial-element 1))))
 
-(defun test2 (&key (B 10) (N (* 28 28 32)) (M (* 128 32)) (M2 (* 10 32)))
-  (declare (optimize (speed 3) (debug 0) (safety 0)))
-  (let* ((x (make-array `(,B ,N) :element-type 'bit :initial-element 1))
-         (w (make-array `(,M ,N) :element-type 'bit :initial-element 1))
-         (r (make-array `(,B ,M) :element-type 'bit :initial-element 0))
-         (w2 (make-array `(,M2 ,M) :element-type 'bit :initial-element 1))
-         (r2 (make-array `(,B ,M2) :element-type 'bit :initial-element 0)))
-    (time (progn (dense r x w)
-                 (dense r2 r w2)))
-    (and (equalp r
-                 (make-array `(,B ,M) :element-type 'bit :initial-element 1))
-         (equalp r2
-                 (make-array `(,B ,M2) :element-type 'bit :initial-element 1)))))
+(defun dense-reference-no-opt (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1)))
+
+    (iter (for iN below N)
+          (iter (for iB below B)
+                (iter (for iM below M)
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW)
+                                           (sum (logxor (aref arr-x iN iB iCHW)
+                                                        (aref arr-w iB iM iCHW))))))))))))
+
+(defun dense-reference (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 0)
+                     (debug 0)))
+
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1)))
+
+    (declare (type fixnum N B CHW M))
+
+    (iter (for iN below N)
+          (declare (type fixnum iN))
+
+          (iter (for iB below B)
+                (declare (type fixnum iB))
+
+                (iter (for iM below M)
+                      (declare (type fixnum iM))
+
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW)
+                                           (declare (type fixnum iCHW))
+                                           (sum (the fixnum (logxor (aref arr-x iN iB iCHW)
+                                                                    (aref arr-w iB iM iCHW))) into acc)
+                                           (declare (type fixnum acc))
+                                           (finally (return acc)))))))))))
+
+(defun dense-v1 (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 0)
+                     (debug 0)))
+
+  (sb-sys:with-pinned-objects (arr-w arr-x)
+    (let* ((N (array-dimension arr-x 0))
+           (B (array-dimension arr-x 1))
+           (CHW (array-dimension arr-x 2))
+           (M (array-dimension arr-w 1))
+           (fx (flatten arr-x))
+           (fw (flatten arr-w))
+           (pw (sb-sys:vector-sap fw))
+           (px (sb-sys:vector-sap fx)))
+
+      (declare (type fixnum N B CHW M)
+               (type system-area-pointer pw px))
+
+      (iter (for iN below N)
+            (declare (type fixnum iN))
+
+            (iter (for iB below B)
+                  (declare (type fixnum iB))
+
+                  (iter (for iM below M)
+                        (declare (type fixnum iM))
+
+                        (setf (aref arr-y iN iB iM)
+                              (sign (+ (aref arr-b iB iM)
+                                       (let ((slice-x (+ (the fixnum (* iN CHW B))
+                                                         (the fixnum (* iB CHW))))
+                                             (slice-w (the fixnum (* iM CHW))))
+                                         (declare (type fixnum slice-x slice-w))
+                                         (iter (for iCHW below CHW by 256)
+                                               (declare (type fixnum iCHW))
+                                               (sum (+ (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x iCHW)))
+                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w iCHW))))))
+                                                       (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x (+ iCHW 64))))
+                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w (+ iCHW 64)))))))
+                                                       (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x (+ iCHW 128))))
+                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w (+ iCHW 128)))))))
+                                                       (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x (+ iCHW 192))))
+                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w (+ iCHW 192)))))))) into acc)
+                                               (declare (type fixnum acc))
+                                               (finally (return acc)))))))))))))
+
+(defun test-dense-reference-no-opt (&key
+                                      (N-repeat 1)
+                                      (N 1000)
+                                      (B 8)
+                                      (C 1)
+                                      (H 32)
+                                      (W H)
+                                      (M 128))
+  (let* ((arr-y (make-array `(,N ,B ,M) :element-type 'bit))
+         (arr-x (make-array `(,N ,B ,(* C H W)) :element-type 'bit))
+         (arr-w (make-array `(,B ,M ,(* C H W)) :element-type 'bit))
+         (arr-b (make-array `(,B ,M) :element-type 'fixnum)))
+    (time (iter (repeat N-repeat)
+                (dense-reference-no-opt arr-y arr-w arr-x arr-b)))))
+
+(defun test-dense-reference (&key
+                               (N-repeat 1)
+                               (N 1000)
+                               (B 8)
+                               (C 1)
+                               (H 32)
+                               (W H)
+                               (M 128))
+  (let* ((arr-y (make-array `(,N ,B ,M) :element-type 'bit))
+         (arr-x (make-array `(,N ,B ,(* C H W)) :element-type 'bit))
+         (arr-w (make-array `(,B ,M ,(* C H W)) :element-type 'bit))
+         (arr-b (make-array `(,B ,M) :element-type 'fixnum)))
+    (time (iter (repeat N-repeat)
+                (dense-reference arr-y arr-w arr-x arr-b)))))
+
+(defun test-dense-v1 (&key
+                        (N-repeat 1)
+                        (N 1000)
+                        (B 8)
+                        (C 1)
+                        (H 32)
+                        (W H)
+                        (M 128))
+  (let* ((arr-y (make-array `(,N ,B ,M) :element-type 'bit))
+         (arr-x (make-array `(,N ,B ,(* C H W)) :element-type 'bit))
+         (arr-w (make-array `(,B ,M ,(* C H W)) :element-type 'bit))
+         (arr-b (make-array `(,B ,M) :element-type 'fixnum)))
+    (time (iter (repeat N-repeat)
+                (dense-v1 arr-y arr-w arr-x arr-b)))))
+
+(defun check-dense-v1 (&key
+                         (N-repeat 1)
+                         (N 1000)
+                         (B 8)
+                         (C 1)
+                         (H 32)
+                         (W H)
+                         (M 128))
+  (let* ((arr-y1 (make-array `(,N ,B ,M) :element-type 'bit))
+         (arr-y2 (make-array `(,N ,B ,M) :element-type 'bit))
+         (arr-x (make-array `(,N ,B ,(* C H W)) :element-type 'bit))
+         (arr-w (make-array `(,B ,M ,(* C H W)) :element-type 'bit))
+         (arr-b (make-array `(,B ,M) :element-type 'fixnum)))
+
+    ;; warmup
+    (dense-v1 arr-y1 arr-w arr-x arr-b)
+    (dense-v1 arr-y2 arr-w arr-x arr-b)
+
+    ;; bench
+    (time (iter (repeat N-repeat)
+                (dense-reference arr-y1 arr-w arr-x arr-b)))
+    (time (iter (repeat N-repeat)
+                (dense-v1 arr-y2 arr-w arr-x arr-b)))
+
+    ;; check
+    (equalp arr-y1 arr-y2)))

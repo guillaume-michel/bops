@@ -9,3 +9,11 @@
           (pr (sb-sys:vector-sap r)))
       (loop :for i :below size :by 16 :do
            (%bit-and i px py pr)))))
+
+(declaim (inline sign))
+(defun sign (x)
+  (declare (type fixnum x))
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (if (>= x 0)
+      1
+      0))

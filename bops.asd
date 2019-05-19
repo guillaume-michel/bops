@@ -15,6 +15,4 @@
                                      (:file "vops")
                                      (:file "array-utils")
                                      (:file "bops")
-                                     (:file "dense")
-                                     (:file "dense2")
-                                     (:file "dense3")))))
+                                     (:file "dense")))))

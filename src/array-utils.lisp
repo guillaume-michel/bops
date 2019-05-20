@@ -60,3 +60,21 @@ Elements are initialized randomly."
           (setf (aref oflat i)
                 (bit-vector->integer (reverse (aops:displace iflat num-bits (* i num-bits))))))
     res))
+
+(defun padded-dimensions (dims paddings)
+  (mapcar (lambda (dim padding)
+            (destructuring-bind (before after) padding
+              (+ before dim after)))
+          dims
+          paddings))
+
+;; (defun array-pad (arr &key
+;;                         (paddings (make-list (array-rank arr) :initial-element '(0 0)))
+;;                         (pad-value 0))
+;;   (assert (= (array-rank arr)
+;;              (length paddings)))
+;;   (let* ((padded-dimensions (padded-dimensions (array-dimensions arr) paddings))
+;;          (result (make-array padded-dimensions
+;;                              :element-type (array-element-type arr)
+;;                              :initial-element (coerce pad-value (array-element-type arr)))))
+;;     result))

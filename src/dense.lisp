@@ -123,8 +123,8 @@ where
            (B (array-dimension arr-x 1))
            (CHW (array-dimension arr-x 2))
            (M (array-dimension arr-w 1))
-           (fx (flatten arr-x))
-           (fw (flatten arr-w))
+           (fx (aops:flatten arr-x))
+           (fw (aops:flatten arr-w))
            (pw (sb-sys:vector-sap fw))
            (px (sb-sys:vector-sap fx)))
 

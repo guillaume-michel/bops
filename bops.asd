@@ -6,7 +6,8 @@
   :homepage "http://orilla.fr"
   :license "MIT license (see COPYING)"
   :depends-on ("iterate"
-               "array-operations")
+               "array-operations"
+               "cl-slice")
   :in-order-to ((test-op (test-op "bops-tests")))
   :components ((:static-file "COPYING")
                (:static-file "README.md")

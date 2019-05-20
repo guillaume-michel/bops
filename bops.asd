@@ -7,7 +7,8 @@
   :license "MIT license (see COPYING)"
   :depends-on ("iterate"
                "array-operations"
-               "cl-slice")
+               "cl-slice"
+               "cl-idx")
   :in-order-to ((test-op (test-op "bops-tests")))
   :components ((:static-file "COPYING")
                (:static-file "README.md")
@@ -17,4 +18,6 @@
                                      (:file "vops")
                                      (:file "array-utils")
                                      (:file "bops")
-                                     (:file "dense")))))
+                                     (:file "dense")
+                                     (:file "mnist")
+                                     (:file "train")))))

@@ -1,5 +1,5 @@
 (uiop:define-package #:bops
-  (:use #:cl :sb-ext :sb-c :iterate)
+  (:use #:cl :sb-ext :sb-c :iterate :alexandria)
   (:import-from :sb-sys
                 :system-area-pointer)
   (:import-from :sb-assem
@@ -23,4 +23,5 @@
            #:bit-and-vec
            #:sign
            #:test
-           #:test2))
+           #:test2
+           #:load-mnist))

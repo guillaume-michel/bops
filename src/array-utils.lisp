@@ -10,6 +10,9 @@ Elements are initialized randomly."
               displaced-data)
     data))
 
+(defun make-random-bias-vector (dims extent)
+  (aops:generate* 'fixnum (lambda () (- (random extent))) dims))
+
 (defun bit-vector->integer (bit-vector)
   "Create a positive integer from a bit-vector."
   (reduce #'(lambda (first-bit second-bit)

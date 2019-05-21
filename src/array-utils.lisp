@@ -65,8 +65,10 @@ Elements are initialized randomly."
 (defun padded-slice (dims paddings)
   (mapcar (lambda (dim padding)
             (destructuring-bind (before after) padding
-              (cons before (- dim after))))
-          dims
+              (if (= after 0)
+                  (cons before nil)
+                  (cons before (- dim after)))))
+            dims
           paddings))
 
 (defun array-pad (arr &key

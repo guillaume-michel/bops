@@ -8,7 +8,8 @@
   :depends-on ("iterate"
                "array-operations"
                "cl-slice"
-               "cl-idx")
+               "cl-idx"
+               "trivial-garbage")
   :in-order-to ((test-op (test-op "bops-tests")))
   :components ((:static-file "COPYING")
                (:static-file "README.md")

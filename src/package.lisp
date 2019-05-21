@@ -24,4 +24,5 @@
            #:sign
            #:test
            #:test2
-           #:load-mnist))
+           #:load-mnist
+           #:prepare-mnist))

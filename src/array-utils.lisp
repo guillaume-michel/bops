@@ -1,5 +1,11 @@
 (in-package #:bops)
 
+(defun simple-array-vector (array)
+  (declare (simple-array array))
+  (if (sb-kernel:array-header-p array)
+      (sb-kernel:%array-data-vector array)
+      array))
+
 (defun make-random-bit-vector (dims)
   "Creates a new bit array of the given dimensions.
 Elements are initialized randomly."
@@ -31,31 +37,30 @@ Elements are initialized randomly."
 
 (defun split-bitplane (arr)
   (let* ((res (make-array (append (array-dimensions arr) '(8)) :element-type 'bit :initial-element 0))
-         (iflat (aops:flatten arr))
-         (oflat (aops:flatten res)))
-    (iter (for i below (array-dimension iflat 0))
-          (let ((bits (integer->bit-vector (aref iflat i))))
-            (iter (for j below (array-dimension bits 0))
-                  (setf (aref oflat (+ (* 8 i) j))
-                        (aref bits (- (array-dimension bits 0) j 1))))))
+         (iflat (simple-array-vector arr))
+         (oflat (simple-array-vector res)))
+    (sb-sys:with-pinned-objects (arr res iflat oflat)
+      (sb-kernel:system-area-ub8-copy (sb-sys:vector-sap iflat) 0
+                                      (sb-sys:vector-sap oflat) 0
+                                      (array-total-size arr)))
     res))
 
 (defun fuse-bitplane-uint8 (arr)
   "arr must have the bitplanes as the last dimension"
   (assert (>= (array-rank arr)
               2))
-  (assert (= (mod (car (last (array-dimensions arr)))
-                  8)
-             0))
+  (assert (= (the fixnum (car (last (array-dimensions arr))))
+             8))
   (assert (typep arr '(simple-array bit *)))
 
-  (let* ((num-bits (car (last (array-dimensions arr))))
-         (res (make-array (butlast (array-dimensions arr)) :element-type `(unsigned-byte ,num-bits)))
-         (iflat (aops:flatten arr))
-         (oflat (aops:flatten res)))
-    (iter (for i below (array-dimension oflat 0))
-          (setf (aref oflat i)
-                (bit-vector->integer (reverse (aops:displace iflat num-bits (* i num-bits))))))
+  (let* ((res (make-array (butlast (array-dimensions arr)) :element-type '(unsigned-byte 8)))
+         (iflat (simple-array-vector arr))
+         (oflat (simple-array-vector res)))
+
+    (sb-sys:with-pinned-objects (arr res iflat oflat)
+      (sb-kernel:system-area-ub8-copy (sb-sys:vector-sap iflat) 0
+                                      (sb-sys:vector-sap oflat) 0
+                                      (array-total-size res)))
     res))
 
 (defun padded-dimensions (dims paddings)

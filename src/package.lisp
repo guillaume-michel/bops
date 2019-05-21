@@ -1,5 +1,5 @@
 (uiop:define-package #:bops
-  (:use #:cl :sb-ext :sb-c :iterate :alexandria)
+  (:use #:cl :sb-ext :sb-c :iterate)
   (:import-from :sb-sys
                 :system-area-pointer)
   (:import-from :sb-assem

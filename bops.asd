@@ -20,5 +20,6 @@
                                      (:file "array-utils")
                                      (:file "bops")
                                      (:file "dense")
+                                     (:file "mlp")
                                      (:file "mnist")
                                      (:file "train")))))

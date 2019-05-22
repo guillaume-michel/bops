@@ -6,13 +6,18 @@
       (sb-kernel:%array-data-vector array)
       array))
 
-(defun make-random-bit-vector (dims)
+(defun make-random-bit-vector (dims &key (probability-one 0.5f0))
   "Creates a new bit array of the given dimensions.
 Elements are initialized randomly."
   (let* ((data (make-array dims :element-type 'bit))
          (displaced-data (aops:flatten data)))
     (map-into displaced-data
-              (lambda (b) (declare (ignore b)) (random 2))
+              (lambda (b)
+                (declare (ignore b))
+                (if (<= (random 1.0f0)
+                        probability-one)
+                    1
+                    0))
               displaced-data)
     data))
 

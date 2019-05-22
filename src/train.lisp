@@ -76,6 +76,19 @@ yhat are ground truth labels"
           (declare (type single-float acc))
           (finally (return (float (/ acc N)))))))
 
+(defun uniform-bit-mutation (w pmut)
+  (let ((result (make-random-bit-vector (array-dimensions w) :probability-one pmut)))
+    (bit-xor w result result)
+    result))
+
+(defun uniform-bit-crossover (w1 w2 pcross)
+  (let* ((mask (make-random-bit-vector (array-dimensions w1) :probability-one pcross))
+         (bitdiff (bit-and (bit-xor w1 w2)
+                           mask)))
+    (list
+     (bit-xor w1 bitdiff)
+     (bit-xor w2 bitdiff))))
+
 #|
 
 (destructuring-bind (x-train y-train x-test y-test) (prepare-mnist (load-mnist))

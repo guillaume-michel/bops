@@ -62,6 +62,20 @@
               (incf accuracy)))
     (float (/ accuracy (array-total-size y)))))
 
+(defun loss (y yhat)
+  "y is output of softmax.
+yhat are ground truth labels"
+  (declare (type (simple-array single-float (* *)) y)
+           (type (simple-array (unsigned-byte 8) (*)) yhat)
+           (optimize (speed 3) (debug 3) (safety 3)))
+
+  (let ((N (array-dimension y 0)))
+    (iter (for i below N)
+          (declare (type fixnum i))
+          (sum (- 1 (aref y i (aref yhat i))) into acc)
+          (declare (type single-float acc))
+          (finally (return (float (/ acc N)))))))
+
 #|
 
 (destructuring-bind (x-train y-train x-test y-test) (prepare-mnist (load-mnist))

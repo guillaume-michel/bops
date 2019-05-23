@@ -19,6 +19,7 @@
                                      (:file "vops")
                                      (:file "array-utils")
                                      (:file "bops")
+                                     (:file "ml-functions")
                                      (:file "dense")
                                      (:file "mlp")
                                      (:file "mnist")

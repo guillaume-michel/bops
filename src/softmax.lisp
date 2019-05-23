@@ -1,7 +1,7 @@
 (in-package :bops)
 
-(deftype softmax-input (&optional N M)
-  `(simple-array (unsigned-byte 8) (,N ,M)))
+(deftype softmax-input (&optional N B M)
+  `(simple-array bit (,N ,B ,M)))
 
 (deftype softmax-output (&optional N M)
   `(simple-array single-float (,N ,M)))
@@ -29,8 +29,17 @@
 (defmethod run-inference ((operator softmax) input output)
   (assert (typep input 'softmax-input))
   (assert (typep output 'softmax-output))
-  (assert (equalp (array-dimensions input)
-                  (array-dimensions outputs)))
+  (assert (= (array-dimension input 0)
+             (array-dimension output 0)))
+  (assert (= (array-dimension input 2)
+             (array-dimension output 1)))
+  (assert (= (array-dimension input 1)
+             8)
+          ()
+          "Softmax do not support bitplanes != 8")
 
   (with-slots (theta) operator
-    (softmax input output :theta theta)))
+    (softmax (fuse-bitplane-uint8 (aops:permute '(0 2 1)
+                                                input))
+             output
+             :theta theta)))

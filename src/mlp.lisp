@@ -74,5 +74,5 @@
                   (arr-x (nth i inputs))
                   (arr-b (nth i biases)))
               (dense-v1 arr-y arr-w arr-x arr-b))))
-    (softmax (fuse-bitplane-uint8 (aops:permute '(0 2 1)
-                                                (car (last scratchs)))))))
+    (softmax-old (fuse-bitplane-uint8 (aops:permute '(0 2 1)
+                                                    (car (last scratchs)))))))

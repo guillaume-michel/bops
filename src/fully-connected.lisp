@@ -52,19 +52,19 @@
     (with-slots (input-neurones output-neurones bitplanes) object
       (format stream ":bitplanes ~d :output-neurones ~d :input-neurones ~d" bitplanes output-neurones input-neurones))))
 
-(defmethod run-inference ((fc binary-fully-connected) (inputs list) (outputs list))
+(defmethod run-inference ((operator binary-fully-connected) (inputs list) (outputs list))
   (assert (and (not (null inputs))
                (not (null outputs))))
   (let ((input (car inputs))
         (output (car outputs)))
-    (run-inference fc input output)))
+    (run-inference operator input output)))
 
-(defmethod run-inference ((fc binary-fully-connected) input output)
+(defmethod run-inference ((operator binary-fully-connected) input output)
   (with-slots ((CHW input-neurones)
                (M output-neurones)
                (B bitplanes)
                weights
-               biases) fc
+               biases) operator
 
     (assert (typep input `(binary-fc-input * ,B ,CHW)))
     (assert (typep output `(binary-fc-output * ,B ,M)))

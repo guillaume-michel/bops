@@ -24,6 +24,7 @@
                                      (:file "dense")
                                      (:file "neural-network")
                                      (:file "fully-connected")
+                                     (:file "softmax")
                                      (:file "sequential")
                                      (:file "mlp")
                                      (:file "mnist")

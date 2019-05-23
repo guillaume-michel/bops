@@ -47,6 +47,11 @@
           (make-random-bias-vector `(,B ,M)
                                    (+ CHW 1)))))
 
+(defmethod print-object ((object binary-fully-connected) stream)
+  (print-unreadable-object (object stream :type t :identity t)
+    (with-slots (input-neurones output-neurones bitplanes) object
+      (format stream ":bitplanes ~d :output-neurones ~d :input-neurones ~d" bitplanes output-neurones input-neurones))))
+
 (defmethod operator-output-shape ((operator binary-fully-connected) input-shape)
   (with-slots ((M output-neurones)
                (B bitplanes)) operator
@@ -55,11 +60,6 @@
 
 (defmethod make-operator-output ((operator binary-fully-connected) input-shape)
   (make-array (operator-output-shape operator input-shape) :element-type 'bit))
-
-(defmethod print-object ((object binary-fully-connected) stream)
-  (print-unreadable-object (object stream :type t :identity t)
-    (with-slots (input-neurones output-neurones bitplanes) object
-      (format stream ":bitplanes ~d :output-neurones ~d :input-neurones ~d" bitplanes output-neurones input-neurones))))
 
 (defmethod run-inference ((operator binary-fully-connected) (inputs list) (outputs list))
   (assert (and (not (null inputs))

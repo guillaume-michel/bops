@@ -36,38 +36,40 @@
                       (batch-size 32)
                       (B 8))
   (destructuring-bind (x-train y-train x-test y-test) datas
-    (let* ((mlp (make-mlp dims batch-size :B B))
-           (weights (make-mlp-weights dims :B B))
-           (biases (make-mlp-biases dims :B B))
-           (train-predictions nil)
-           (train-predicted-labels nil))
-      (iter (for i below (/ (array-dimension x-train 0) batch-size))
-            (setf train-predictions (mlp-run-inference mlp (get-x-batch x-train batch-size i) weights biases))
-            (setf train-predicted-labels (argmax train-predictions))
-            (format t "TRAIN for batch: ~D Accuracy=~A - Loss=~A~%"
-                    i
-                    (accuracy train-predicted-labels (get-y-batch y-train batch-size i))
-                    (loss train-predictions (get-y-batch y-train batch-size i)))))))
+    (let ((mlp (make-mlp dims :B B)))
+      (let ((train-predictions (make-operator-output mlp (array-dimensions (get-x-batch x-train batch-size 0))))
+            (train-predicted-labels nil))
+        (iter (for i below (/ (array-dimension x-train 0) batch-size))
+              (run-inference mlp (get-x-batch x-train batch-size i) train-predictions)
+              (setf train-predicted-labels (argmax train-predictions))
+              (format t "TRAIN for batch: ~D Accuracy=~A - Loss=~A~%"
+                      i
+                      (accuracy train-predicted-labels (get-y-batch y-train batch-size i))
+                      (loss train-predictions (get-y-batch y-train batch-size i)))))
+      (let ((test-predictions (make-operator-output mlp (array-dimensions x-test)))
+            (test-predicted-labels nil))
+        (run-inference mlp x-test test-predictions)
+        (setf test-predicted-labels (argmax test-predictions))
+        (format t "TEST Accuracy=~A - Loss=~A~%"
+                (accuracy test-predicted-labels y-test)
+                (loss test-predictions y-test))))))
 
 #|
 
-(destructuring-bind (x-train y-train x-test y-test) (prepare-mnist (load-mnist))
+(defparameter datas (prepare-mnist (load-mnist)))
+
+(destructuring-bind (x-train y-train x-test y-test) datas
     (print (array-dimensions x-train))
     (print (array-dimensions y-train))
     (print (array-dimensions x-test))
     (print (array-dimensions y-test)))
 
-(defparameter datas (prepare-mnist (load-mnist)))
-(defparameter arr-x (first datas))
-(defparameter arr-w (make-random-bit-vector '(8 10 1024)))
-(defparameter arr-b (make-random-bias-vector '(8 10) 125))
-(defparameter arr-y (make-array '(60000 8 10) :element-type 'bit))
+(defparameter mlp (make-mlp2 '(1024 128 10) :B 8))
 
-(dense-v1 arr-y arr-w arr-x arr-b)
+(defparameter input (car datas))
+(defparameter output (make-operator-output mlp (array-dimensions input)))
 
-(defparameter res (fuse-bitplane-uint8 (aops:permute '(0 2 1) arr-y)))
+(time (run-inference mlp input output))
 
-
-(defparameter train-labels (second datas))
-
+(time (train datas :batch-size 32))
 |#

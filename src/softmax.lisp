@@ -19,6 +19,14 @@
     (with-slots (theta) object
       (format stream ":theta ~d" theta))))
 
+(defmethod operator-output-shape ((operator softmax) input-shape)
+  (destructuring-bind (N B M) input-shape
+    (declare (ignore B))
+    `(,N ,M)))
+
+(defmethod make-operator-output ((operator softmax) input-shape)
+  (make-array (operator-output-shape operator input-shape) :element-type 'single-float))
+
 (defmethod run-inference ((operator softmax) (inputs list) (outputs list))
   (assert (and (not (null inputs))
                (not (null outputs))))

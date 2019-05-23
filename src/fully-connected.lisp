@@ -10,7 +10,7 @@
   `(simple-array negative-fixnum (,B ,M)))
 
 (deftype binary-fc-input (&optional N B CHW)
-  `(simple-array bit (,N ,B ,CHW)))
+  `(array bit (,N ,B ,CHW)))
 
 (deftype binary-fc-output (&optional N B M)
   `(simple-array bit (,N ,B ,M)))
@@ -37,15 +37,24 @@
            :documentation "b tensor in y = W*x+b"))
   (:documentation "Binary fully connected operator"))
 
-(defmethod initialize-instance :after ((fc binary-fully-connected) &key)
+(defmethod initialize-instance :after ((operator binary-fully-connected) &key)
   (with-slots ((CHW input-neurones)
                (M output-neurones)
-               (B bitplanes)) fc
-    (setf (slot-value fc 'weights)
+               (B bitplanes)) operator
+    (setf (slot-value operator 'weights)
           (make-random-bit-vector `(,B ,M ,CHW)))
-    (setf (slot-value fc 'biases)
+    (setf (slot-value operator 'biases)
           (make-random-bias-vector `(,B ,M)
                                    (+ CHW 1)))))
+
+(defmethod operator-output-shape ((operator binary-fully-connected) input-shape)
+  (with-slots ((M output-neurones)
+               (B bitplanes)) operator
+    (let ((batch-size (car input-shape)))
+      `(,batch-size ,B ,M))))
+
+(defmethod make-operator-output ((operator binary-fully-connected) input-shape)
+  (make-array (operator-output-shape operator input-shape) :element-type 'bit))
 
 (defmethod print-object ((object binary-fully-connected) stream)
   (print-unreadable-object (object stream :type t :identity t)

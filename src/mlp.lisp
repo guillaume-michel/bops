@@ -76,3 +76,15 @@
               (dense-v1 arr-y arr-w arr-x arr-b))))
     (softmax-old (fuse-bitplane-uint8 (aops:permute '(0 2 1)
                                                     (car (last scratchs)))))))
+
+(defun make-mlp-operators (dims B)
+  (iter (for i below (- (length dims) 1))
+        (collect (make-instance 'binary-fully-connected
+                                :input-neurones (nth i dims)
+                                :output-neurones (nth (+ i 1) dims)
+                                :bitplanes B) into operators)
+          (finally (return (append operators (list (make-instance 'softmax :theta 255)))))))
+
+(defun make-mlp2 (dims &key (B 8))
+  (mlp-check-dims dims)
+  (make-instance 'sequential :operators (make-mlp-operators dims B)))

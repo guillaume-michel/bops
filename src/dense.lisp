@@ -113,10 +113,10 @@ where
 
   (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
            (type (simple-array fixnum (* *)) arr-b)
-           (optimize (speed 3)
+           (optimize (speed 0)
                      (compilation-speed 0)
-                     (safety 0)
-                     (debug 0)))
+                     (safety 3)
+                     (debug 3)))
 
   (sb-sys:with-pinned-objects (arr-w arr-x)
     (let* ((N (array-dimension arr-x 0))

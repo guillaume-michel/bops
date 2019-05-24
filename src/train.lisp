@@ -58,13 +58,15 @@
 
 (defparameter datas (prepare-mnist (load-mnist)))
 
+(mapcar #'type-of datas)
+
 (destructuring-bind (x-train y-train x-test y-test) datas
     (print (array-dimensions x-train))
     (print (array-dimensions y-train))
     (print (array-dimensions x-test))
     (print (array-dimensions y-test)))
 
-(defparameter mlp (make-mlp2 '(1024 128 10) :B 8))
+(defparameter mlp (make-mlp '(1024 256 10) :B 8))
 
 (defparameter input (car datas))
 (defparameter output (make-operator-output mlp (array-dimensions input)))

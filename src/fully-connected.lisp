@@ -10,15 +10,15 @@
   `(simple-array negative-fixnum (,B ,M)))
 
 (deftype binary-fc-input (&optional N B CHW)
-  `(array bit (,N ,B ,CHW)))
+  `(simple-array bit (,N ,B ,CHW)))
 
 (deftype binary-fc-output (&optional N B M)
   `(simple-array bit (,N ,B ,M)))
 
 (defclass binary-fully-connected ()
   ((input-neurones :initarg :input-neurones
-                   :type (and (integer 64 most-positive-fixnum)
-                              (satisfies is-multiple-of-64))
+                   :type (and (integer 256 most-positive-fixnum)
+                              (satisfies is-multiple-of-256))
                    :reader binary-fc-input-neurones
                    :documentation "number of input neurones")
    (output-neurones :initarg :output-neurones

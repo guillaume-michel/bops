@@ -18,9 +18,11 @@
                               (pad-value 0))
   (flet ((prepare-x (x)
            (let ((batch-size (array-dimension x 0)))
-             (aops:reshape (aops:permute '(0 3 1 2)
-                                         (split-bitplane (array-pad x :paddings paddings :pad-value pad-value)))
-                           `(,batch-size 8 t)))))
+             ;; final slice is to get a simple-array instead of an array
+             (cl-slice:slice (aops:reshape (aops:permute '(0 3 1 2)
+                                                         (split-bitplane (array-pad x :paddings paddings :pad-value pad-value)))
+                                           `(,batch-size 8 t))
+                             t t t))))
     (destructuring-bind (x-train y-train x-test y-test) datas
       (list
        (prepare-x x-train)

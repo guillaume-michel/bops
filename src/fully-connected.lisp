@@ -90,4 +90,4 @@
     (assert (= (array-dimension input 0)
                (array-dimension output 0)))
 
-    (dense output weights input biases)))
+    (dense output weights input biases :transpose transpose)))

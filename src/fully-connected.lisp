@@ -17,8 +17,7 @@
 
 (defclass binary-fully-connected ()
   ((input-neurones :initarg :input-neurones
-                   :type (and (integer 256 most-positive-fixnum)
-                              (satisfies is-multiple-of-256))
+                   :type (integer 1 most-positive-fixnum) ; multiple of 64, 128, 256, 512 or 1024 for optimized implementations
                    :reader binary-fc-input-neurones
                    :documentation "number of input neurones")
    (output-neurones :initarg :output-neurones

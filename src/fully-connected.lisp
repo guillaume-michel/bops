@@ -28,6 +28,11 @@
               :type (integer 1 most-positive-fixnum)
               :reader binary-fc-bitplanes
               :documentation "number of bitplanes")
+   (transpose :initarg :transpose
+              :type boolean
+              :initform nil
+              :reader binary-fc-transpose
+              :documentation "if t y is transposed")
    (weights :type binary-fc-weights
             :accessor binary-fc-weights
             :documentation "W tensor in y = W*x+b")
@@ -53,9 +58,12 @@
 
 (defmethod operator-output-shape ((operator binary-fully-connected) input-shape)
   (with-slots ((M output-neurones)
-               (B bitplanes)) operator
+               (B bitplanes)
+               transpose) operator
     (let ((batch-size (car input-shape)))
-      `(,batch-size ,B ,M))))
+      (if transpose
+          `(,batch-size ,M ,B)
+          `(,batch-size ,B ,M)))))
 
 (defmethod make-operator-output ((operator binary-fully-connected) input-shape)
   (make-array (operator-output-shape operator input-shape) :element-type 'bit))
@@ -71,11 +79,14 @@
   (with-slots ((CHW input-neurones)
                (M output-neurones)
                (B bitplanes)
+               transpose
                weights
                biases) operator
 
     (assert (typep input `(binary-fc-input * ,B ,CHW)))
-    (assert (typep output `(binary-fc-output * ,B ,M)))
+    (if transpose
+        (assert (typep output `(binary-fc-output * ,M ,B)))
+        (assert (typep output `(binary-fc-output * ,B ,M))))
     (assert (= (array-dimension input 0)
                (array-dimension output 0)))
 

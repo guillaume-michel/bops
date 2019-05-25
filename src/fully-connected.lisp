@@ -53,8 +53,8 @@
 
 (defmethod print-object ((object binary-fully-connected) stream)
   (print-unreadable-object (object stream :type t :identity t)
-    (with-slots (input-neurones output-neurones bitplanes) object
-      (format stream ":bitplanes ~d :output-neurones ~d :input-neurones ~d" bitplanes output-neurones input-neurones))))
+    (with-slots (input-neurones output-neurones bitplanes transpose) object
+      (format stream ":bitplanes ~d :output-neurones ~d :input-neurones ~d :transpose ~A" bitplanes output-neurones input-neurones transpose))))
 
 (defmethod operator-output-shape ((operator binary-fully-connected) input-shape)
   (with-slots ((M output-neurones)

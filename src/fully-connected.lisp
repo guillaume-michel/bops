@@ -80,4 +80,4 @@
     (assert (= (array-dimension input 0)
                (array-dimension output 0)))
 
-    (dense-v1 output weights input biases)))
+    (dense output weights input biases)))

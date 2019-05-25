@@ -68,8 +68,8 @@ where
            (type (simple-array fixnum (* *)) arr-b)
            (optimize (speed 3)
                      (compilation-speed 0)
-                     (safety 0)
-                     (debug 0)))
+                     (safety 3)
+                     (debug 3)))
 
   (let ((N (array-dimension arr-x 0))
         (B (array-dimension arr-x 1))
@@ -86,7 +86,6 @@ where
 
                 (iter (for iM below M)
                       (declare (type fixnum iM))
-
                       (setf (aref arr-y iN iB iM)
                             (sign (+ (aref arr-b iB iM)
                                      (iter (for iCHW below CHW)
@@ -96,7 +95,24 @@ where
                                            (declare (type fixnum acc))
                                            (finally (return acc)))))))))))
 
-(defun dense-v1 (arr-y arr-w arr-x arr-b)
+;;; I need to write a macro for all of it
+(defun dense (arr-y arr-w arr-x arr-b)
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 3)
+                     (debug 3)))
+
+  (let ((CHW (array-dimension arr-x 2)))
+    (cond ((= (mod CHW 1024) 0) (dense-1024 arr-y arr-w arr-x arr-b))
+          ((= (mod CHW 512) 0) (dense-512 arr-y arr-w arr-x arr-b))
+          ((= (mod CHW 256) 0) (dense-256 arr-y arr-w arr-x arr-b))
+          ((= (mod CHW 128) 0) (dense-128 arr-y arr-w arr-x arr-b))
+          ((= (mod CHW 64) 0) (dense-64 arr-y arr-w arr-x arr-b))
+          (t (dense-reference arr-y arr-w arr-x arr-b)))))
+
+(defun dense-64 (arr-y arr-w arr-x arr-b)
   "Computes bitserial arr-y = arr-W * arr-x + arr-b
 
 arr-y: array of shape (N, B, M) with type 'bit
@@ -113,51 +129,306 @@ where
 
   (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
            (type (simple-array fixnum (* *)) arr-b)
-           (optimize (speed 0)
+           (optimize (speed 3)
                      (compilation-speed 0)
                      (safety 3)
                      (debug 3)))
 
-  (sb-sys:with-pinned-objects (arr-w arr-x)
-    (let* ((N (array-dimension arr-x 0))
-           (B (array-dimension arr-x 1))
-           (CHW (array-dimension arr-x 2))
-           (M (array-dimension arr-w 1))
-           (fx (simple-array-vector arr-x))
-           (fw (simple-array-vector arr-w))
-           (pw (sb-sys:vector-sap fw))
-           (px (sb-sys:vector-sap fx)))
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1))
+        (data-x (simple-array-vector arr-x))
+        (data-w (simple-array-vector arr-w)))
 
-      (declare (type fixnum N B CHW M)
-               (type system-area-pointer pw px))
+    (declare (type fixnum N B CHW M)
+             (type (simple-array bit (* * *)) arr-x arr-w))
 
-      (iter (for iN below N)
-            (declare (type fixnum iN))
+    (iter (for iN below N)
+          (declare (type fixnum iN))
 
-            (iter (for iB below B)
-                  (declare (type fixnum iB))
+          (iter (for iB below B)
+                (declare (type fixnum iB))
 
-                  (iter (for iM below M)
-                        (declare (type fixnum iM))
+                (iter (for iM below M)
+                      (declare (type fixnum iM))
 
-                        (setf (aref arr-y iN iB iM)
-                              (sign (+ (aref arr-b iB iM)
-                                       (let ((slice-x (+ (the fixnum (* iN CHW B))
-                                                         (the fixnum (* iB CHW))))
-                                             (slice-w (the fixnum (* iM CHW))))
-                                         (declare (type fixnum slice-x slice-w))
-                                         (iter (for iCHW below CHW by 256)
-                                               (declare (type fixnum iCHW))
-                                               (sum (+ (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x iCHW)))
-                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w iCHW))))))
-                                                       (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x (+ iCHW 64))))
-                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w (+ iCHW 64)))))))
-                                                       (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x (+ iCHW 128))))
-                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w (+ iCHW 128)))))))
-                                                       (the fixnum (%popcnt (%xor-u64 (%sap-ref-u64 px (the fixnum (+ slice-x (+ iCHW 192))))
-                                                                                      (%sap-ref-u64 pw (the fixnum (+ slice-w (+ iCHW 192)))))))) into acc)
-                                               (declare (type fixnum acc))
-                                               (finally (return acc)))))))))))))
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW by 64)
+                                           (declare (type fixnum iCHW))
+
+                                           (let ((index-x (/ (array-row-major-index arr-x iN iB iCHW) 64))
+                                                 (index-w (/ (array-row-major-index arr-w iB iM iCHW) 64)))
+                                             (sum (+ (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 0))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 0))))) into acc))
+                                           (declare (type fixnum acc))
+                                           (finally (return acc)))))))))))
+
+(defun dense-128 (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 3)
+                     (debug 3)))
+
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1))
+        (data-x (simple-array-vector arr-x))
+        (data-w (simple-array-vector arr-w)))
+
+    (declare (type fixnum N B CHW M)
+             (type (simple-array bit (* * *)) arr-x arr-w))
+
+    (iter (for iN below N)
+          (declare (type fixnum iN))
+
+          (iter (for iB below B)
+                (declare (type fixnum iB))
+
+                (iter (for iM below M)
+                      (declare (type fixnum iM))
+
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW by 128)
+                                           (declare (type fixnum iCHW))
+
+                                           (let ((index-x (/ (array-row-major-index arr-x iN iB iCHW) 64))
+                                                 (index-w (/ (array-row-major-index arr-w iB iM iCHW) 64)))
+                                             (sum (+ (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 0))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 0))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 1))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 1))))) into acc))
+                                           (declare (type fixnum acc))
+                                           (finally (return acc)))))))))))
+
+(defun dense-256 (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 3)
+                     (debug 3)))
+
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1))
+        (data-x (simple-array-vector arr-x))
+        (data-w (simple-array-vector arr-w)))
+
+    (declare (type fixnum N B CHW M)
+             (type (simple-array bit (* * *)) arr-x arr-w))
+
+    (iter (for iN below N)
+          (declare (type fixnum iN))
+
+          (iter (for iB below B)
+                (declare (type fixnum iB))
+
+                (iter (for iM below M)
+                      (declare (type fixnum iM))
+
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW by 256)
+                                           (declare (type fixnum iCHW))
+
+                                           (let ((index-x (/ (array-row-major-index arr-x iN iB iCHW) 64))
+                                                 (index-w (/ (array-row-major-index arr-w iB iM iCHW) 64)))
+                                             (sum (+ (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 0))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 0))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 1))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 1))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 2))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 2))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 3))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 3))))) into acc))
+                                           (declare (type fixnum acc))
+                                           (finally (return acc)))))))))))
+
+(defun dense-512 (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 3)
+                     (debug 3)))
+
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1))
+        (data-x (simple-array-vector arr-x))
+        (data-w (simple-array-vector arr-w)))
+
+    (declare (type fixnum N B CHW M)
+             (type (simple-array bit (* * *)) arr-x arr-w))
+
+    (iter (for iN below N)
+          (declare (type fixnum iN))
+
+          (iter (for iB below B)
+                (declare (type fixnum iB))
+
+                (iter (for iM below M)
+                      (declare (type fixnum iM))
+
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW by 512)
+                                           (declare (type fixnum iCHW))
+
+                                           (let ((index-x (/ (array-row-major-index arr-x iN iB iCHW) 64))
+                                                 (index-w (/ (array-row-major-index arr-w iB iM iCHW) 64)))
+                                             (sum (+ (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 0))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 0))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 1))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 1))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 2))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 2))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 3))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 3))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 4))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 4))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 5))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 5))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 6))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 6))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 7))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 7))))) into acc))
+                                           (declare (type fixnum acc))
+                                           (finally (return acc)))))))))))
+
+(defun dense-1024 (arr-y arr-w arr-x arr-b)
+  "Computes bitserial arr-y = arr-W * arr-x + arr-b
+
+arr-y: array of shape (N, B, M) with type 'bit
+arr-x: array of shape (N, B, CxHxW) with type 'bit
+arr-w: array of shape (B, M, CxHxW) with type 'bit
+arr-b: array of shape (B, M) with type (integer (- (+ CxHxW 1)) CxHxW))
+
+where
+ * N is the batch size dimension
+ * B is the bitplane dimension
+ * C is the channel dimension
+ * H is the spatial height
+ * W is the spatial width"
+
+  (declare (type (simple-array bit (* * *)) arr-y arr-x arr-w)
+           (type (simple-array fixnum (* *)) arr-b)
+           (optimize (speed 3)
+                     (compilation-speed 0)
+                     (safety 3)
+                     (debug 3)))
+
+  (let ((N (array-dimension arr-x 0))
+        (B (array-dimension arr-x 1))
+        (CHW (array-dimension arr-x 2))
+        (M (array-dimension arr-w 1))
+        (data-x (simple-array-vector arr-x))
+        (data-w (simple-array-vector arr-w)))
+
+    (declare (type fixnum N B CHW M)
+             (type (simple-array bit (* * *)) arr-x arr-w))
+
+    (iter (for iN below N)
+          (declare (type fixnum iN))
+
+          (iter (for iB below B)
+                (declare (type fixnum iB))
+
+                (iter (for iM below M)
+                      (declare (type fixnum iM))
+
+                      (setf (aref arr-y iN iB iM)
+                            (sign (+ (aref arr-b iB iM)
+                                     (iter (for iCHW below CHW by 1024)
+                                           (declare (type fixnum iCHW))
+
+                                           (let ((index-x (/ (array-row-major-index arr-x iN iB iCHW) 64))
+                                                 (index-w (/ (array-row-major-index arr-w iB iM iCHW) 64)))
+                                             (sum (+ (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 0))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 0))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 1))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 1))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 2))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 2))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 3))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 3))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 4))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 4))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 5))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 5))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 6))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 6))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 7))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 7))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 8))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 8))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 9))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 9))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 10))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 10))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 11))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 11))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 12))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 12))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 13))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 13))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 14))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 14))))
+                                                     (logcount (logxor (sb-kernel:%vector-raw-bits data-x (+ index-x 15))
+                                                                       (sb-kernel:%vector-raw-bits data-w (+ index-w 15))))
+                                                     ) into acc))
+                                           (declare (type fixnum acc))
+                                           (finally (return acc)))))))))))
 
 (defun test-dense-reference-no-opt (&key
                                       (N-repeat 1)
@@ -189,44 +460,44 @@ where
     (time (iter (repeat N-repeat)
                 (dense-reference arr-y arr-w arr-x arr-b)))))
 
-(defun test-dense-v1 (&key
-                        (N-repeat 1)
-                        (N 1000)
-                        (B 8)
-                        (C 1)
-                        (H 32)
-                        (W H)
-                        (M 128))
+(defun test-dense (&key
+                     (N-repeat 1)
+                     (N 1000)
+                     (B 8)
+                     (C 1)
+                     (H 32)
+                     (W H)
+                     (M 128))
   (let* ((arr-y (make-array `(,N ,B ,M) :element-type 'bit))
          (arr-x (make-array `(,N ,B ,(* C H W)) :element-type 'bit))
          (arr-w (make-array `(,B ,M ,(* C H W)) :element-type 'bit))
          (arr-b (make-array `(,B ,M) :element-type 'fixnum)))
     (time (iter (repeat N-repeat)
-                (dense-v1 arr-y arr-w arr-x arr-b)))))
+                (dense arr-y arr-w arr-x arr-b)))))
 
-(defun check-dense-v1 (&key
-                         (N-repeat 1)
-                         (N 1000)
-                         (B 8)
-                         (C 1)
-                         (H 32)
-                         (W H)
-                         (M 128))
+(defun check-dense (&key
+                      (N-repeat 1)
+                      (N 1000)
+                      (B 8)
+                      (C 1)
+                      (H 32)
+                      (W H)
+                      (M 128))
   (let* ((arr-y1 (make-array `(,N ,B ,M) :element-type 'bit))
          (arr-y2 (make-array `(,N ,B ,M) :element-type 'bit))
          (arr-x (make-array `(,N ,B ,(* C H W)) :element-type 'bit))
          (arr-w (make-array `(,B ,M ,(* C H W)) :element-type 'bit))
          (arr-b (make-array `(,B ,M) :element-type 'fixnum)))
 
+    (dense-reference arr-y1 arr-w arr-x arr-b)
+
     ;; warmup
-    (dense-v1 arr-y1 arr-w arr-x arr-b)
-    (dense-v1 arr-y2 arr-w arr-x arr-b)
+    (dense arr-y2 arr-w arr-x arr-b)
+    (dense arr-y2 arr-w arr-x arr-b)
 
     ;; bench
     (time (iter (repeat N-repeat)
-                (dense-reference arr-y1 arr-w arr-x arr-b)))
-    (time (iter (repeat N-repeat)
-                (dense-v1 arr-y2 arr-w arr-x arr-b)))
+                (dense arr-y2 arr-w arr-x arr-b)))
 
     ;; check
     (equalp arr-y1 arr-y2)))

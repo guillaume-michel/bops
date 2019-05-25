@@ -17,8 +17,12 @@
         (collect (make-instance 'binary-fully-connected
                                 :input-neurones (nth i dims)
                                 :output-neurones (nth (+ i 1) dims)
-                                :bitplanes B) into operators)
-          (finally (return (append operators (list (make-instance 'softmax :theta 255)))))))
+                                :bitplanes B
+                                :transpose (if (= i (- (length dims) 2))
+                                               t
+                                               nil)) into operators)
+        (finally (return (append operators (list (make-instance 'fuse-bitplane)
+                                                 (make-instance 'softmax :theta 255)))))))
 
 (defun make-mlp (dims &key (B 8))
   (mlp-check-dims dims)

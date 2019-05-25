@@ -34,23 +34,24 @@ Elements are initialized randomly."
                                       (array-total-size arr)))
     res))
 
-(defun fuse-bitplane-uint8 (arr)
-  "arr must have the bitplanes as the last dimension"
-  (assert (>= (array-rank arr)
+(defun fuse-bitplane-uint8 (input output)
+  "input should be an array of 'bit and must have the bitplanes as the last dimension (N1..Nk B)
+output should be array of (unsigned-byte 8) with shape (N1..Nk)"
+  (assert (>= (array-rank input)
               2))
-  (assert (= (the fixnum (car (last (array-dimensions arr))))
+  (assert (= (array-rank input) (+ (array-rank output) 1)))
+  (assert (= (the fixnum (car (last (array-dimensions input))))
              8))
-  (assert (typep arr '(simple-array bit *)))
+  (assert (typep input '(simple-array bit *)))
+  (assert (typep output '(simple-array (unsigned-byte 8) *)))
 
-  (let* ((res (make-array (butlast (array-dimensions arr)) :element-type '(unsigned-byte 8)))
-         (iflat (simple-array-vector arr))
-         (oflat (simple-array-vector res)))
+  (let* ((iflat (simple-array-vector input))
+         (oflat (simple-array-vector output)))
 
-    (sb-sys:with-pinned-objects (arr res iflat oflat)
+    (sb-sys:with-pinned-objects (iflat oflat)
       (sb-kernel:system-area-ub8-copy (sb-sys:vector-sap iflat) 0
                                       (sb-sys:vector-sap oflat) 0
-                                      (array-total-size res)))
-    res))
+                                      (array-total-size output)))))
 
 (defun padded-dimensions (dims paddings)
   (mapcar (lambda (dim padding)

@@ -1,7 +1,7 @@
 (in-package :bops)
 
-(deftype softmax-input (&optional N B M)
-  `(simple-array bit (,N ,B ,M)))
+(deftype softmax-input (&optional N M)
+  `(simple-array (unsigned-byte 8) (,N ,M)))
 
 (deftype softmax-output (&optional N M)
   `(simple-array single-float (,N ,M)))
@@ -20,8 +20,7 @@
       (format stream ":theta ~d" theta))))
 
 (defmethod operator-output-shape ((operator softmax) input-shape)
-  (destructuring-bind (N B M) input-shape
-    (declare (ignore B))
+  (destructuring-bind (N M) input-shape
     `(,N ,M)))
 
 (defmethod make-operator-output ((operator softmax) input-shape)
@@ -39,15 +38,8 @@
   (assert (typep output 'softmax-output))
   (assert (= (array-dimension input 0)
              (array-dimension output 0)))
-  (assert (= (array-dimension input 2)
-             (array-dimension output 1)))
   (assert (= (array-dimension input 1)
-             8)
-          ()
-          "Softmax do not support bitplanes != 8")
+             (array-dimension output 1)))
 
   (with-slots (theta) operator
-    (softmax (fuse-bitplane-uint8 (aops:permute '(0 2 1)
-                                                input))
-             output
-             :theta theta)))
+    (softmax input output :theta theta)))

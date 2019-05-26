@@ -33,10 +33,12 @@
               :initform nil
               :reader binary-fc-transpose
               :documentation "if t y is transposed")
-   (weights :type binary-fc-weights
+   (weights :initarg :weights
+            :type binary-fc-weights
             :accessor binary-fc-weights
             :documentation "W tensor in y = W*x+b")
-   (biases :type binary-fc-biases
+   (biases :initarg :biases
+           :type binary-fc-biases
            :accessor binary-fc-biases
            :documentation "b tensor in y = W*x+b"))
   (:documentation "Binary fully connected operator"))
@@ -45,11 +47,13 @@
   (with-slots ((CHW input-neurones)
                (M output-neurones)
                (B bitplanes)) operator
-    (setf (slot-value operator 'weights)
-          (make-random-bit-vector `(,B ,M ,CHW)))
-    (setf (slot-value operator 'biases)
-          (make-random-bias-vector `(,B ,M)
-                                   (+ CHW 1)))))
+    (unless (slot-boundp operator 'weights)
+      (setf (slot-value operator 'weights)
+            (make-random-bit-vector `(,B ,M ,CHW))))
+    (unless (slot-boundp operator 'biases)
+      (setf (slot-value operator 'biases)
+            (make-random-bias-vector `(,B ,M)
+                                     (+ CHW 1))))))
 
 (defmethod print-object ((object binary-fully-connected) stream)
   (print-unreadable-object (object stream :type t :identity t)
@@ -91,3 +95,27 @@
                (array-dimension output 0)))
 
     (dense output weights input biases :transpose transpose)))
+
+(defmethod operator-parameters ((operator binary-fully-connected))
+  (list (binary-fc-weights operator)
+        (binary-fc-biases operator)))
+
+(defmethod mutate ((operator binary-fully-connected) (strategy uniform-mutation))
+  (with-slots ((CHW input-neurones)
+               (M output-neurones)
+               (B bitplanes)
+               transpose
+               weights
+               biases) operator
+    (let ((mutated-weights (uniform-bit-mutation weights (uniform-mutation-prob strategy)))
+          (mutated-biases (uniform-fixnum-mutation biases
+                                                   (uniform-mutation-prob strategy)
+                                                   (- (+ CHW 1))
+                                                   0)))
+      (make-instance 'binary-fully-connected
+                     :input-neurones CHW
+                     :output-neurones M
+                     :bitplanes B
+                     :transpose transpose
+                     :weights mutated-weights
+                     :biases mutated-biases))))

@@ -86,3 +86,15 @@
     (if (null operators)
         (error "Trying to run-inference for empty sequential operator")
         (run-sequential-inference operators (append scratchs (list output)) input))))
+
+(defmethod operator-parameters ((operator sequential))
+  (with-slots (operators scratchs) operator
+    (alexandria:flatten (mapcar #'operator-parameters operators))))
+
+(defmethod mutate ((operator sequential) strategy)
+  (with-slots (operators scratchs) operator
+    (let ((new-operators (mapcar (lambda (o)
+                                   (mutate o strategy))
+                                 operators)))
+      (make-instance 'sequential
+                     :operators new-operators))))

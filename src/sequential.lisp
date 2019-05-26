@@ -98,3 +98,16 @@
                                  operators)))
       (make-instance 'sequential
                      :operators new-operators))))
+
+(defmethod crossover ((operator1 sequential)
+                      (operator2 sequential)
+                      strategy)
+  (with-slots ((operators1 operators)) operator1
+    (with-slots ((operators2 operators)) operator2
+      (let ((new-operators (mapcar (lambda (o1 o2)
+                                     (crossover o1 o2 strategy))
+                                   operators1 operators2)))
+        (list (make-instance 'sequential
+                             :operators (mapcar #'first new-operators))
+              (make-instance 'sequential
+                             :operators (mapcar #'second new-operators)))))))

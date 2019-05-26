@@ -23,6 +23,7 @@
                                      (:file "ml-functions")
                                      (:file "dense")
                                      (:file "mutation")
+                                     (:file "crossover")
                                      (:file "neural-network")
                                      (:file "fully-connected")
                                      (:file "fuse-bitplane")

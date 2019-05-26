@@ -119,3 +119,45 @@
                      :transpose transpose
                      :weights mutated-weights
                      :biases mutated-biases))))
+
+(defmethod crossover ((operator1 binary-fully-connected)
+                      (operator2 binary-fully-connected)
+                      (strategy uniform-crossover))
+  (with-slots ((CHW1 input-neurones)
+               (M1 output-neurones)
+               (B1 bitplanes)
+               (transpose1 transpose)
+               (weights1 weights)
+               (biases1 biases)) operator1
+    (with-slots ((CHW2 input-neurones)
+                 (M2 output-neurones)
+                 (B2 bitplanes)
+                 (transpose2 transpose)
+                 (weights2 weights)
+                 (biases2 biases)) operator2
+
+      (assert (= CHW1 CHW2))
+      (assert (= M1 M2))
+      (assert (= B1 B2))
+      (assert (eq transpose1 transpose2))
+
+      (destructuring-bind (crossover-weights1 crossover-weights2) (uniform-bit-crossover weights1
+                                                                                         weights2
+                                                                                         (uniform-crossover-prob strategy))
+        (destructuring-bind (crossover-biases1 crossover-biases2) (uniform-fixnum-crossover biases1
+                                                                                            biases2
+                                                                                            (uniform-crossover-prob strategy))
+          (list (make-instance 'binary-fully-connected
+                               :input-neurones CHW1
+                               :output-neurones M1
+                               :bitplanes B1
+                               :transpose transpose1
+                               :weights crossover-weights1
+                               :biases crossover-biases1)
+                (make-instance 'binary-fully-connected
+                               :input-neurones CHW2
+                               :output-neurones M2
+                               :bitplanes B2
+                               :transpose transpose2
+                               :weights crossover-weights2
+                               :biases crossover-biases2)))))))

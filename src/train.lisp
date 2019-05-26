@@ -1,13 +1,5 @@
 (in-package :bops)
 
-(defun uniform-bit-crossover (w1 w2 pcross)
-  (let* ((mask (make-random-bit-vector (array-dimensions w1) :probability-one pcross))
-         (bitdiff (bit-and (bit-xor w1 w2)
-                           mask)))
-    (list
-     (bit-xor w1 bitdiff)
-     (bit-xor w2 bitdiff))))
-
 (defun get-batch-slice (data batch-size index)
   (let ((N (array-dimension data 0)))
     (cons (* index batch-size)

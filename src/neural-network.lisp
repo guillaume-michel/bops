@@ -16,7 +16,13 @@
 ;;; API for genetic algorithm
 
 (defgeneric mutate (operator strategy)
-  (:documentation "Mutate the given operator with eht egicven mutation strategy")
+  (:documentation "Mutate the given operator with the given mutation strategy")
   (:method (operator strategy)
     ;; by default no mutation
     operator))
+
+(defgeneric crossover (operator1 operator2 strategy)
+  (:documentation "Cross over the 2 given operators with the given crossover strategy")
+  (:method (operator1 operator2 strategy)
+    ;; by default no crossover
+    (list operator1 operator2)))

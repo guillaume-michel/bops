@@ -18,54 +18,113 @@
   (cl-slice:slice data
                   (get-batch-slice data batch-size index)))
 
+(defun make-population (dims B P)
+    "create population of P individuals (each is an mlp)"
+  (iter (repeat P)
+        (collect (make-mlp dims :B B))))
+
+(defun group-pairwise (list)
+  (assert (= (mod (length list) 2) 0))
+  (iter (for i below (length list) by 2)
+        (collect (list (nth i list)
+                       (nth (+ i 1) list)))))
+
+(defun minimum-k (k list &key (accessor #'identity))
+  "return the k minimum elements in list"
+  (subseq (sort list (lambda (x y)
+                       (< (funcall accessor x)
+                          (funcall accessor y))))
+          0 k))
+
+(defun keep-best-individuals (k parents children)
+  (minimum-k k (append parents children) :accessor #'first))
+
 (defun train (datas &key
                       (dims '(1024 128 10))
-                      (batch-size 32)
+                      (batch-size 600)
                       (B 8)
-                      (generation 500)
-                      (pmut 0.3))
+                      (generation 10)
+                      (pcross 0.9)
+                      (pmut 0.3)
+                      (tournament-size 4)
+                      (population-size 100)
+                      (num-threads 8))
   (destructuring-bind (x-train y-train x-test y-test) datas
-    (let ((mlp (make-mlp dims :B B))
-          (mut-strategy (make-instance 'uniform-mutation :prob pmut)))
-      (let ((train-predictions (make-operator-output mlp (array-dimensions (get-x-batch x-train batch-size 0))))
-            (train-predicted-labels nil)
-            (new-train-predictions (make-operator-output mlp (array-dimensions (get-x-batch x-train batch-size 0))))
-            (new-train-predicted-labels nil))
-        (iter (for gen below generation)
-              (format t "============= Generation: ~d ============~%" gen)
-              (iter (for i below (/ (array-dimension x-train 0) batch-size))
-                    (let ((new-mlp (mutate mlp mut-strategy)))
-                      (run-inference mlp (get-x-batch x-train batch-size i) train-predictions)
-                      (run-inference new-mlp (get-x-batch x-train batch-size i) new-train-predictions)
+    (let* ((lparallel:*kernel* (lparallel:make-kernel num-threads))
+           (population (make-population dims B population-size))
+           (fitnesses nil)
+           (mut-strategy (make-instance 'uniform-mutation :prob pmut))
+           (mate-strategy (make-instance 'uniform-crossover :prob pcross))
+           (selection-strategy (make-instance 'tournament-selection :tournament-size tournament-size))
+           (train-predictions-outputs (mapcar (lambda (mlp)
+                                                (make-operator-output mlp
+                                                                      (array-dimensions (get-x-batch x-train
+                                                                                                     batch-size
+                                                                                                     0))))
+                                              population))
+           (new-train-predictions-outputs (mapcar (lambda (mlp)
+                                                    (make-operator-output mlp
+                                                                          (array-dimensions (get-x-batch x-train
+                                                                                                         batch-size
+                                                                                                         0))))
+                                                  population)))
 
-                      (setf train-predicted-labels (argmax train-predictions))
-                      (setf new-train-predicted-labels (argmax new-train-predictions))
+      (lparallel:pmapcar (lambda (mlp train-predictions)
+                (run-inference mlp (get-x-batch x-train batch-size 0) train-predictions))
+              population train-predictions-outputs)
 
-                      (let ((train-accuracy (accuracy train-predicted-labels (get-y-batch y-train batch-size i)))
-                            (train-loss (loss train-predictions (get-y-batch y-train batch-size i)))
-                            (new-train-accuracy (accuracy new-train-predicted-labels (get-y-batch y-train batch-size i)))
-                            (new-train-loss (loss new-train-predictions (get-y-batch y-train batch-size i))))
+      (setf fitnesses (mapcar (lambda (train-predictions)
+                                (loss train-predictions (get-y-batch y-train batch-size 0)))
+                              train-predictions-outputs))
 
-                        (when (< new-train-loss train-loss)
-                          ;;(format t "New network found ~A" new-mlp)
-                          (setf mlp new-mlp)
-                          (setf train-accuracy new-train-accuracy)
-                          (setf train-loss new-train-loss))
-                        (format t "TRAIN for batch: ~D Accuracy=~A - Loss=~A~%"
-                                i
-                                train-accuracy
-                                train-loss))))
-              (let ((test-predictions (make-operator-output mlp (array-dimensions x-test)))
+      (iter (for gen below generation)
+            (format t "============= Generation: ~d ============~%" gen)
+            (iter (for i below (/ (array-dimension x-train 0) batch-size))
+                  (let ((candidates (mapcar (lambda (ind)
+                                              (mutate ind mut-strategy))
+                                            (alexandria:flatten (mapcar (lambda (pair)
+                                                                          (crossover (first pair) (second pair) mate-strategy))
+                                                                        (group-pairwise (mapcar #'cdr
+                                                                                                (select population
+                                                                                                        (length population)
+                                                                                                        fitnesses
+                                                                                                        selection-strategy))))))))
+                    (lparallel:pmapcar (lambda (mlp train-predictions)
+                              (run-inference mlp (get-x-batch x-train batch-size i) train-predictions))
+                            population train-predictions-outputs)
+
+                    (lparallel:pmapcar (lambda (mlp train-predictions)
+                              (run-inference mlp (get-x-batch x-train batch-size i) train-predictions))
+                            candidates new-train-predictions-outputs)
+
+                    (let* ((train-losses (mapcar (lambda (train-predictions)
+                                                   (loss train-predictions (get-y-batch y-train batch-size i)))
+                                                 train-predictions-outputs))
+                           (new-train-losses (mapcar (lambda (train-predictions)
+                                                       (loss train-predictions (get-y-batch y-train batch-size i)))
+                                                     new-train-predictions-outputs))
+                           (parents (mapcar #'list train-losses population))
+                           (children (mapcar #'list new-train-losses candidates))
+                           (best-individuals (keep-best-individuals (length parents) parents children)))
+
+                      (setf population (mapcar #'second best-individuals))
+                      (setf fitnesses (mapcar #'first best-individuals))
+
+                      (format t "TRAIN for batch: ~D Loss=~A~%"
+                              i
+                              (caar best-individuals)))))
+
+            (let ((test-predictions (make-operator-output (car population) (array-dimensions x-test)))
                     (test-predicted-labels nil))
-                (run-inference mlp x-test test-predictions)
+                (run-inference (car population) x-test test-predictions)
 
                 (setf test-predicted-labels (argmax test-predictions))
                 (let ((test-accuracy (accuracy test-predicted-labels y-test))
                       (test-loss (loss test-predictions y-test)))
                   (format t "TEST Accuracy=~A - Loss=~A~%"
                           test-accuracy
-                          test-loss)))))
-      mlp)))
+                          test-loss))))
+      population)))
 
 #|
 

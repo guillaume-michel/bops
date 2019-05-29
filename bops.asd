@@ -9,7 +9,8 @@
                "array-operations"
                "cl-slice"
                "cl-idx"
-               "trivial-garbage")
+               "trivial-garbage"
+               "lparallel")
   :in-order-to ((test-op (test-op "bops-tests")))
   :components ((:static-file "COPYING")
                (:static-file "README.md")
@@ -24,6 +25,8 @@
                                      (:file "dense")
                                      (:file "mutation")
                                      (:file "crossover")
+                                     (:file "selection")
+                                     (:file "tournament-selection")
                                      (:file "neural-network")
                                      (:file "fully-connected")
                                      (:file "fuse-bitplane")

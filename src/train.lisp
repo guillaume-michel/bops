@@ -146,4 +146,12 @@
 (time (run-inference mlp input output))
 
 (time (train datas :batch-size 32))
+
+------------------------------------------
+DIGITS
+------------------------------------------
+(defparameter datas (prepare-mnist (load-mnist "/home/gmichel/data/digits/") :paddings '((0 0) (0 0) (0 0))))
+
+(train datas :dims '(64 64 10) :batch-size (array-dimension (car datas) 0) :generation 100)
+
 |#

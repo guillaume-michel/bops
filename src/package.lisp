@@ -1,4 +1,4 @@
-(uiop:define-package #:bops
+(uiop:define-package :bops
   (:use #:cl :sb-ext :sb-c)
   (:import-from :sb-sys
                 :system-area-pointer)
@@ -18,7 +18,7 @@
                 :move)
   (:export bit-and-vec))
 
-(uiop:define-package #:bops2
+(uiop:define-package :bops2
   (:use #:cl :sb-ext :sb-c)
   (:import-from :sb-sys
                 :system-area-pointer)
